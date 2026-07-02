@@ -17,12 +17,14 @@ import glob
 import json
 import shutil
 import queue
+import time
 import threading
 from datetime import datetime
 
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 
+# pyrefly: ignore [missing-import]
 import google.generativeai as genai
 from dotenv import load_dotenv
 
@@ -33,18 +35,20 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 # CONFIGURATION — edit these to match your organization
 # ============================================================
 
-# The 3 valid loan types. The AI is forced to pick exactly one of these.
+# The 4 valid loan types. The AI is forced to pick exactly one of these.
 LOAN_TYPES = [
-    "Personal Loan",
-    "Home Loan",
-    "Car Loan",
+    "Type1",
+    "Type2",
+    "Type3",
+    "Type4",
 ]
 
 # Destination folder name for each loan type (created inside the output directory).
 LOAN_TYPE_FOLDERS = {
-    "Personal Loan": "Personal_Loan",
-    "Home Loan": "Home_Loan",
-    "Car Loan": "Car_Loan",
+    "Type1": "Type1",
+    "Type2": "Type2",
+    "Type3": "Type3",
+    "Type4": "Type4",
 }
 
 MANUAL_FOLDER_NAME = "Manual"          # Folder for files that need human review
@@ -62,10 +66,12 @@ Read the document carefully and extract EXACTLY these three fields:
 
 1. "name": The full name of the applicant/customer (first name and last name, as written in the document).
 2. "id_card": The 13-digit national ID card number. Return DIGITS ONLY, no spaces or dashes. It must be exactly 13 digits.
-3. "loan_type": The type of loan. It MUST be exactly one of the following values (choose the closest match):
-   - "{LOAN_TYPES[0]}"
-   - "{LOAN_TYPES[1]}"
-   - "{LOAN_TYPES[2]}"
+3. "loan_type": The type of loan. Look for "ประเภท" or "Type" in the document and map it as follows:
+   - If the type is 1 or Type 1 or ประเภท 1, return "{LOAN_TYPES[0]}".
+   - If the type is 2 or Type 2 or ประเภท 2, return "{LOAN_TYPES[1]}".
+   - If the type is 3 or Type 3 or ประเภท 3, return "{LOAN_TYPES[2]}".
+   - If the type is 4 or Type 4 or ประเภท 4, return "{LOAN_TYPES[3]}".
+   The value MUST be exactly one of: "{LOAN_TYPES[0]}", "{LOAN_TYPES[1]}", "{LOAN_TYPES[2]}", "{LOAN_TYPES[3]}".
 
 STRICT RULES:
 - Respond with ONLY a single valid JSON object. No markdown, no code fences, no explanations.
@@ -124,16 +130,34 @@ class DocumentProcessor:
                 self.log(f"  [ERROR] Empty file: {os.path.basename(pdf_path)}")
                 return None
 
-            response = self.model.generate_content(
-                [
-                    {"mime_type": "application/pdf", "data": pdf_bytes},
-                    GEMINI_PROMPT,
-                ]
-            )
-            raw = (response.text or "").strip()
-            # Strip accidental markdown fences, just in case
-            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw)
-            return json.loads(raw)
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = self.model.generate_content(
+                        [
+                            {"mime_type": "application/pdf", "data": pdf_bytes},
+                            GEMINI_PROMPT,
+                        ]
+                    )
+                    raw = (response.text or "").strip()
+                    # Strip accidental markdown fences, just in case
+                    raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw)
+                    return json.loads(raw)
+                except Exception as e:
+                    error_str = str(e)
+                    if "429" in error_str or "quota" in error_str.lower() or "rate" in error_str.lower():
+                        # Extract retry delay from error message if possible
+                        wait_match = re.search(r"retry in ([\d.]+)s", error_str, re.IGNORECASE)
+                        wait_time = float(wait_match.group(1)) + 2 if wait_match else 40
+                        if attempt < max_retries - 1:
+                            self.log(f"  [RATE LIMIT] Waiting {wait_time:.0f}s before retry ({attempt + 1}/{max_retries})...")
+                            time.sleep(wait_time)
+                            continue
+                        else:
+                            self.log(f"  [ERROR] Rate limit exceeded after {max_retries} retries.")
+                            return None
+                    else:
+                        raise
         except json.JSONDecodeError:
             self.log("  [ERROR] AI returned invalid JSON.")
             return None
