@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ผู้ช่วยเอกสาร AI — กยศ.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="light">
+  <div class="app">
+    <!-- ================= SIDEBAR ================= -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-logo">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+        </div>
+        <div class="brand-text">
+          <strong>ผู้ช่วยเอกสาร AI</strong>
+          <span>กองทุนเงินให้กู้ยืม กยศ.</span>
+        </div>
+      </div>
+
+      <div class="nav-label">เมนูหลัก</div>
+      <nav class="nav">
+        <button class="nav-item active" data-page="dashboard" data-tooltip="หน้าหลัก">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+          <span><b>หน้าหลัก</b><small>ภาพรวมการทำงานของระบบ</small></span>
+        </button>
+        <button class="nav-item" data-page="process" data-tooltip="ประมวลผลเอกสาร">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 15 2 2 4-4"/></svg>
+          <span><b>ประมวลผลเอกสาร</b><small>ตรวจสอบและจัดเก็บ</small></span>
+        </button>
+        <button class="nav-item" data-page="history" data-tooltip="ประวัติการทำงาน">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
+          <span><b>ประวัติการทำงาน</b><small>ผลการประมวลผลย้อนหลัง</small></span>
+        </button>
+        <button class="nav-item" data-page="settings" data-tooltip="ตั้งค่า">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          <span><b>ตั้งค่า</b><small>กำหนดค่าระบบ</small></span>
+        </button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        <span>ระบบตรวจสอบเอกสารอัตโนมัติด้วยปัญญาประดิษฐ์</span>
+      </div>
+    </aside>
+
+    <!-- ================= MAIN ================= -->
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-btn" id="toggleSidebar" title="ซ่อน/แสดงเมนู">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
+        </button>
+        <div class="topbar-title">
+          <h1 id="pageTitle">หน้าหลัก</h1>
+          <p id="pageSubtitle">ภาพรวมการทำงานของระบบ</p>
+        </div>
+        <div class="topbar-right">
+          <button class="icon-btn" id="themeToggle" title="สลับธีม">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>
+          </button>
+          <div class="user-chip">
+            <div class="avatar">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div class="user-meta">
+              <b>เจ้าหน้าที่</b>
+              <small>เจ้าหน้าที่ กยศ.</small>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="content">
+        <!-- ============ DASHBOARD ============ -->
+        <section class="page active" id="page-dashboard">
+          <h2 class="welcome">ยินดีต้อนรับสู่ระบบผู้ช่วยเอกสาร กยศ.</h2>
+          <p class="welcome-sub">ระบบช่วยตรวจสอบและจัดเก็บเอกสารแบบยืนยันการเบิกเงินกู้ยืมอัตโนมัติ ใช้งานง่าย เพียงไม่กี่ขั้นตอน</p>
+
+          <div class="stat-grid">
+            <div class="stat-card">
+              <div class="stat-icon indigo"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div>
+              <div class="stat-body"><span>เอกสารทั้งหมด</span><strong id="dashTotal">0</strong><small>จำนวนเอกสารที่ประมวลผลสะสม</small></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon green"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg></div>
+              <div class="stat-body"><span>สำเร็จ</span><strong id="dashSuccess">0</strong><small>ผ่านการตรวจสอบและจัดเก็บแล้ว</small></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon amber"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div>
+              <div class="stat-body"><span>ต้องตรวจสอบ</span><strong id="dashManual">0</strong><small>ส่งเข้าโฟลเดอร์ตรวจสอบด้วยตนเอง</small></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon violet"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg></div>
+              <div class="stat-body"><span>อัตราความสำเร็จ</span><strong id="dashRate">0%</strong><small>สัดส่วนเอกสารที่ผ่านการตรวจสอบ</small></div>
+            </div>
+          </div>
+
+          <div class="dash-columns">
+            <div class="card chart-card">
+              <h3>ปริมาณเอกสารที่ประมวลผล</h3>
+              <p class="muted">ย้อนหลัง 7 วันที่ผ่านมา</p>
+              <div class="chart" id="dashChart"></div>
+              <div class="chart-legend">
+                <span><i class="dot indigo"></i> สำเร็จ</span>
+                <span><i class="dot slate"></i> ทั้งหมด</span>
+              </div>
+            </div>
+            <div class="card">
+              <h3>เริ่มต้นใช้งาน</h3>
+              <p class="muted">เลือกเมนูเพื่อเริ่มทำงาน</p>
+              <button class="action-row" data-page="process">
+                <span class="action-icon green"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg></span>
+                <span class="action-text"><b>ประมวลผลเอกสารชุดใหม่</b><small>อัปโหลดและตรวจสอบเอกสารอัตโนมัติ</small></span>
+                <svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+              <button class="action-row" data-page="history">
+                <span class="action-icon amber"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg></span>
+                <span class="action-text"><b>ดูประวัติการทำงาน</b><small>ตรวจสอบผลการประมวลผลย้อนหลัง</small></span>
+                <svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div><h3>กิจกรรมล่าสุด</h3><p class="muted">การประมวลผล 5 รายการล่าสุด</p></div>
+              <button class="link-btn" data-page="history">ดูทั้งหมด →</button>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead><tr><th>วันที่</th><th>จำนวนไฟล์</th><th>สำเร็จ</th><th>ต้องตรวจสอบ</th><th style="text-align:right">สถานะ</th></tr></thead>
+                <tbody id="dashRecent"><tr><td colspan="5" class="empty">ยังไม่มีข้อมูล</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ PROCESS ============ -->
+        <section class="page" id="page-process">
+          <div class="card folder-card">
+            <div class="folder-row">
+              <span class="folder-icon indigo"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg></span>
+              <div class="folder-info">
+                <b>โฟลเดอร์ต้นทาง</b>
+                <small id="srcPath">ยังไม่ได้เลือกโฟลเดอร์</small>
+                <em id="srcHint" class="folder-hint"></em>
+              </div>
+              <button class="btn ghost" id="pickSource">เลือกโฟลเดอร์</button>
+            </div>
+            <div class="folder-row">
+              <span class="folder-icon slate"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg></span>
+              <div class="folder-info">
+                <b>โฟลเดอร์ปลายทาง</b>
+                <small id="outPath">ยังไม่ได้เลือกโฟลเดอร์</small>
+              </div>
+              <button class="btn ghost" id="pickOutput">เลือกโฟลเดอร์</button>
+            </div>
+          </div>
+
+          <div class="mini-stats">
+            <div class="mini-card"><span class="mini-icon slate"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span><div><strong id="mFiles">0 ไฟล์</strong><small>ไฟล์คงเหลือ / ทั้งหมด</small></div></div>
+            <div class="mini-card"><span class="mini-icon green"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg></span><div><strong id="mOk">0 ไฟล์</strong><small>สำเร็จ</small></div></div>
+            <div class="mini-card"><span class="mini-icon amber"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/></svg></span><div><strong id="mManual">0 ไฟล์</strong><small>ต้องตรวจสอบ</small></div></div>
+            <div class="mini-card"><span class="mini-icon indigo"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg></span><div><strong id="mProgress">0%</strong><small>ความคืบหน้า</small></div></div>
+            <div class="mini-card"><span class="mini-icon violet"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span><div><strong id="mTime">0:00</strong><small>เวลาที่ใช้</small></div></div>
+          </div>
+
+          <div class="proc-buttons">
+            <button class="btn success big" id="startBtn"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> เริ่มประมวลผล</button>
+            <button class="btn danger-soft big" id="stopBtn" disabled><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"/></svg> หยุด</button>
+            <button class="btn ghost big" id="resetBtn"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> เริ่มใหม่</button>
+          </div>
+
+          <div class="card progress-card">
+            <div class="progress-head"><span id="progressLabel">พร้อมเริ่มประมวลผล</span><span id="progressPct" class="pct">0%</span></div>
+            <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+          </div>
+
+          <div class="card log-card">
+            <div class="card-head">
+              <div><h3>บันทึกการทำงานโดยละเอียด</h3><p class="muted">แสดงขั้นตอนการทำงานแบบเรียลไทม์ พร้อมวันที่ เวลา และสาเหตุเมื่อเกิดปัญหา</p></div>
+              <button class="link-btn" id="clearLogBtn">ล้างบันทึก</button>
+            </div>
+            <div class="log-list" id="logList">
+              <p class="empty">ยังไม่มีบันทึกการทำงาน</p>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h3>ผลการตรวจสอบเอกสาร</h3>
+                <p class="muted" id="resultCount">แสดง 0 จาก 0 รายการ</p>
+              </div>
+            </div>
+            <div class="result-controls">
+              <div class="filter-tabs">
+                <button class="tab active" data-filter="all">ทั้งหมด</button>
+                <button class="tab" data-filter="success">สำเร็จ</button>
+                <button class="tab" data-filter="manual">ต้องตรวจสอบ</button>
+              </div>
+              <div class="search-box">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <input type="text" id="resultSearch" placeholder="ค้นหาชื่อไฟล์หรือชื่อผู้กู้...">
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead><tr><th>#</th><th>ชื่อไฟล์</th><th>ชื่อ-นามสกุล</th><th>เลขบัตรประชาชน</th><th>ลักษณะเงินกู้</th><th>ลายเซ็น</th><th>ค่าเล่าเรียน</th><th>ค่าครองชีพ/เดือน</th><th>จำนวนเดือน</th><th>ค่าครองชีพรวม</th><th>รวมสุทธิ</th><th>ผลการตรวจสอบ</th></tr></thead>
+                <tbody id="resultBody"><tr><td colspan="12" class="empty">ยังไม่มีรายการ กด "เริ่มประมวลผล" เพื่อเริ่มตรวจสอบเอกสาร</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ HISTORY ============ -->
+        <section class="page" id="page-history">
+          <div class="card">
+            <div class="card-head">
+              <div><h3>ประวัติการประมวลผล</h3><p class="muted">รายการชุดเอกสารที่เคยประมวลผลทั้งหมด</p></div>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead><tr><th>วันที่ - เวลา</th><th>จำนวนเอกสาร</th><th>สำเร็จ</th><th>ต้องตรวจสอบ</th><th>เวลาที่ใช้</th></tr></thead>
+                <tbody id="historyBody"><tr><td colspan="5" class="empty">ยังไม่มีประวัติการประมวลผล</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ SETTINGS ============ -->
+        <section class="page" id="page-settings">
+          <div class="card">
+            <h3 class="card-title-icon"><span class="ci indigo"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>การเชื่อมต่อโมเดล AI</h3>
+            <p class="muted">ตั้งค่าคีย์ API ที่ใช้อ่านและจำแนกเอกสาร (OCR + การจัดหมวดหมู่)</p>
+            <label class="field-label"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-2 2"/></svg> คีย์ API</label>
+            <div class="input-row">
+              <input type="password" id="apiKey" placeholder="sk-...">
+              <button class="btn ghost" id="testBtn"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg> ทดสอบการเชื่อมต่อ</button>
+            </div>
+            <small class="field-hint" id="apiHint">คีย์จะถูกจัดเก็บอย่างปลอดภัยและใช้เพราะการประมวลผลเอกสาร (ขอฟรีได้ที่ aistudio.google.com/apikey)</small>
+          </div>
+
+          <div class="card">
+            <h3 class="card-title-icon"><span class="ci indigo"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg></span>พร็อมท์สำหรับ AI (Prompt)</h3>
+            <p class="muted">คำสั่งที่ส่งให้ AI ใช้อ่านและดึงข้อมูลจากเอกสาร แก้ไขได้หากต้องการปรับพฤติกรรมการอ่าน</p>
+            <label class="field-label">ข้อความพร็อมท์</label>
+            <textarea id="promptText" class="prompt-textarea" rows="10" spellcheck="false"></textarea>
+            <div class="input-row" style="margin-top:8px;">
+              <button class="btn ghost" id="resetPromptBtn" type="button">คืนค่าเริ่มต้น</button>
+            </div>
+            <small class="field-hint">การเปลี่ยนพร็อมท์จะต้องยืนยันด้วยการพิมพ์คำยืนยันก่อนบันทึก</small>
+          </div>
+
+          <div class="card">
+            <h3 class="card-title-icon"><span class="ci indigo"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg></span>โฟลเดอร์เอกสาร</h3>
+            <p class="muted">ตำแหน่งไฟล์ต้นทางที่ต้องประมวลผล และปลายทางสำหรับจัดเก็บผลลัพธ์</p>
+            <label class="field-label">โฟลเดอร์ต้นทาง</label>
+            <div class="input-row">
+              <input type="text" id="setSource" placeholder="เลือกโฟลเดอร์ต้นทาง" readonly>
+              <button class="btn ghost" id="setPickSource">เลือก</button>
+            </div>
+            <label class="field-label">โฟลเดอร์ปลายทาง</label>
+            <div class="input-row">
+              <input type="text" id="setOutput" placeholder="เลือกโฟลเดอร์ปลายทาง" readonly>
+              <button class="btn ghost" id="setPickOutput">เลือก</button>
+            </div>
+            <div class="format-row">
+              <span>รูปแบบไฟล์ที่รองรับ:</span>
+              <span class="chip">PDF</span><span class="chip">JPG</span><span class="chip">PNG</span><span class="chip">TIFF</span>
+            </div>
+          </div>
+
+          <div class="settings-actions">
+            <span id="saveStatus" class="save-status"></span>
+            <button class="btn primary" id="saveBtn"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg> บันทึกการตั้งค่า</button>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- ============ CONFIRM CHANGE MODAL ============ -->
+  <div class="modal-overlay" id="confirmModal" hidden>
+    <div class="modal-box">
+      <h3 id="confirmTitle">ยืนยันการเปลี่ยนแปลง</h3>
+      <p id="confirmDesc" class="muted"></p>
+      <p class="muted">พิมพ์คำว่า <code id="confirmPhrase"></code> เพื่อยืนยัน</p>
+      <input type="text" id="confirmInput" class="modal-input" autocomplete="off" spellcheck="false">
+      <div class="modal-actions">
+        <button class="btn ghost" id="confirmCancelBtn" type="button">ยกเลิก</button>
+        <button class="btn primary" id="confirmOkBtn" type="button" disabled>ยืนยัน</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

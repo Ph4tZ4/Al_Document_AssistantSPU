@@ -3,10 +3,15 @@ AI Document Assistant
 ---------------------
 Windows Desktop App (cross-platform code) that:
 1. Scans all folders starting with "NewDocs" inside a selected source directory.
-2. Sends each scanned PDF to the Gemini API to extract: Name, 13-digit ID Card, Loan Type.
-3. Renames the file to Name_IDCard_LoanType.pdf.
-4. Moves the file into a destination folder matching its Loan Type.
-5. Moves unreadable / incomplete / corrupted files into a "Manual" folder for human review.
+2. Sends each scanned PDF or image (JPG/PNG/…) to the Gemini API to extract:
+   Name, 13-digit ID Card (verified in two places), Loan Type (ลักษณะที่ …),
+   and whether the document has been signed.
+3. Images are resized/re-encoded before upload to reduce token usage while
+   keeping the text readable.
+4. Renames the file to Name_IDCard_LoanType.<ext>.
+5. Moves the file into a destination folder matching its Loan Type.
+6. Moves unreadable / incomplete / unsigned / mismatched files into a "Manual"
+   folder for human review.
 """
 
 from __future__ import annotations
@@ -19,9 +24,11 @@ import shutil
 import queue
 import time
 import threading
+import io
 from datetime import datetime
 
 import customtkinter as ctk
+from PIL import Image
 from tkinter import filedialog, messagebox
 
 # pyrefly: ignore [missing-import]
@@ -55,35 +62,60 @@ MANUAL_FOLDER_NAME = "Manual"          # Folder for files that need human review
 PROCESSED_FOLDER_PREFIX = "NewDocs"    # Source folders: NewDocs, NewDocs 2, NewDocs 3, ...
 GEMINI_MODEL_NAME = "gemini-2.5-flash" # Or "gemini-2.5-pro" for higher accuracy
 
+# Image file extensions accepted alongside PDFs.
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".heic"}
+
+# Image resize settings: shrink the longest side to this many pixels before
+# uploading (reduces tokens). If the AI cannot read the ID numbers at the low
+# resolution, the image is retried once at the higher resolution.
+MAX_IMAGE_DIMENSION = 2048
+MAX_IMAGE_DIMENSION_RETRY = 3072
+JPEG_QUALITY = 85
+
 # ============================================================
 # GEMINI PROMPT — the exact instruction sent with every PDF
 # ============================================================
 
-GEMINI_PROMPT = f"""You are a document data extraction system for a loan department.
-You will receive a scanned PDF document (it may be a photo/scan, possibly in Thai or English).
+GEMINI_PROMPT = f"""You are a document data extraction and verification system for a loan department.
+You will receive a scanned document (PDF or photo/image, possibly in Thai or English).
+It is a Thai student-loan confirmation form (แบบยืนยันการเบิกเงินกู้ยืม กองทุนเงินให้กู้ยืมเพื่อการศึกษา).
 
-Read the document carefully and extract EXACTLY these three fields:
+Read the document carefully and extract EXACTLY these fields:
 
-1. "name": The full name of the applicant/customer (first name and last name, as written in the document).
-2. "id_card": The 13-digit national ID card number. Return DIGITS ONLY, no spaces or dashes. It must be exactly 13 digits.
-3. "loan_type": The type of loan. Look for "ประเภท" or "Type" in the document and map it as follows:
-   - If the type is 1 or Type 1 or ประเภท 1, return "{LOAN_TYPES[0]}".
-   - If the type is 2 or Type 2 or ประเภท 2, return "{LOAN_TYPES[1]}".
-   - If the type is 3 or Type 3 or ประเภท 3, return "{LOAN_TYPES[2]}".
-   - If the type is 4 or Type 4 or ประเภท 4, return "{LOAN_TYPES[3]}".
+1. "name": The full name of the applicant/borrower (first name and last name, as written in the document, e.g. after "ข้าพเจ้า").
+2. "id_card_top": The 13-digit national ID number printed near the TOP of the document,
+   next to or under the barcode area (usually printed as digits under/beside the barcode).
+   Return DIGITS ONLY, no spaces or dashes. It must be exactly 13 digits.
+3. "id_card_body": The 13-digit national ID number written in the document body,
+   on the line labelled "เลขบัตรประจำตัวประชาชน" (usually in section 1, near the applicant's name).
+   Return DIGITS ONLY, no spaces or dashes. It must be exactly 13 digits.
+4. "loan_type": Find the line in the header/title area that starts with "ลักษณะที่" and read the number that follows:
+   - "ลักษณะที่ 1" -> return "{LOAN_TYPES[0]}"
+   - "ลักษณะที่ 2" -> return "{LOAN_TYPES[1]}"
+   - "ลักษณะที่ 3" -> return "{LOAN_TYPES[2]}"
+   - "ลักษณะที่ 4" -> return "{LOAN_TYPES[3]}"
+   If "ลักษณะที่" is not present, fall back to "ประเภท" or "Type" with the same number mapping.
    The value MUST be exactly one of: "{LOAN_TYPES[0]}", "{LOAN_TYPES[1]}", "{LOAN_TYPES[2]}", "{LOAN_TYPES[3]}".
+5. "signed": true or false. Look at the signature area near the BOTTOM of the document
+   (the lines labelled "ลงชื่อ" for ผู้กู้ยืมเงิน / ผู้แทนโดยชอบธรรม / พยาน).
+   Return true if the borrower's signature line ("ลงชื่อ ... ผู้กู้ยืมเงิน") contains ANY handwriting,
+   signature, mark, or even a single dot or tiny stroke on the line. Be LENIENT: any visible ink
+   on that signature line counts as signed. Return false ONLY if the borrower's signature line is
+   completely blank.
 
 STRICT RULES:
 - Respond with ONLY a single valid JSON object. No markdown, no code fences, no explanations.
-- The JSON must have exactly these keys: "name", "id_card", "loan_type".
+- The JSON must have exactly these keys: "name", "id_card_top", "id_card_body", "loan_type", "signed".
+- Read "id_card_top" and "id_card_body" INDEPENDENTLY from their own locations. Do NOT copy one
+  into the other; if one of them cannot be read, set only that one to null.
 - If ANY field cannot be found or read with confidence, set that field's value to null.
 - Do NOT guess or invent data. If the document is unreadable, return all fields as null.
 
 Example of a valid response:
-{{"name": "Somchai Jaidee", "id_card": "1234567890123", "loan_type": "{LOAN_TYPES[0]}"}}
+{{"name": "Somchai Jaidee", "id_card_top": "1234567890123", "id_card_body": "1234567890123", "loan_type": "{LOAN_TYPES[0]}", "signed": true}}
 
 Example when data is missing:
-{{"name": null, "id_card": null, "loan_type": null}}
+{{"name": null, "id_card_top": null, "id_card_body": null, "loan_type": null, "signed": null}}
 """
 
 # ============================================================
@@ -115,27 +147,91 @@ class DocumentProcessor:
 
     @staticmethod
     def find_pdfs(folder: str) -> list:
-        pdfs = glob.glob(os.path.join(folder, "*.pdf"))
-        pdfs += glob.glob(os.path.join(folder, "*.PDF"))
-        return sorted(set(pdfs))
+        """Find all supported documents (PDFs and scanned images) in a folder."""
+        docs = []
+        for path in glob.glob(os.path.join(folder, "*")):
+            if not os.path.isfile(path):
+                continue
+            ext = os.path.splitext(path)[1].lower()
+            if ext == ".pdf" or ext in IMAGE_EXTENSIONS:
+                docs.append(path)
+        return sorted(set(docs))
+
+    # ---------- Image preparation ----------
+
+    def prepare_image(self, image_path: str, max_dim: int = MAX_IMAGE_DIMENSION) -> bytes | None:
+        """Load an image, downscale it so the longest side is at most
+        max_dim pixels, and re-encode as JPEG to reduce upload
+        size / token usage while keeping text readable."""
+        try:
+            with Image.open(image_path) as img:
+                img = img.convert("RGB")
+                w, h = img.size
+                longest = max(w, h)
+                if longest > max_dim:
+                    scale = max_dim / longest
+                    new_size = (max(1, round(w * scale)), max(1, round(h * scale)))
+                    img = img.resize(new_size, Image.LANCZOS)
+                    self.log(f"  [RESIZE] {w}x{h} -> {new_size[0]}x{new_size[1]}")
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=JPEG_QUALITY, optimize=True)
+                return buf.getvalue()
+        except Exception as e:
+            self.log(f"  [ERROR] Cannot read image {os.path.basename(image_path)}: {e}")
+            return None
 
     # ---------- AI extraction ----------
 
     def extract_data(self, pdf_path: str) -> dict | None:
-        """Send the PDF to Gemini and return the parsed JSON dict, or None on failure."""
+        """Send the document (PDF or image) to Gemini and return the parsed JSON dict, or None on failure.
+
+        Images are sent at a reduced resolution first; if the ID numbers cannot
+        be read, the image is retried once at a higher resolution."""
+        ext = os.path.splitext(pdf_path)[1].lower()
+        if ext in IMAGE_EXTENSIONS:
+            data = None
+            for max_dim in (MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION_RETRY):
+                file_bytes = self.prepare_image(pdf_path, max_dim)
+                if not file_bytes:
+                    return None
+                data = self._call_ai(file_bytes, "image/jpeg")
+                if data is not None and self._ids_readable(data):
+                    return data
+                if max_dim != MAX_IMAGE_DIMENSION_RETRY:
+                    self.log("  [RETRY] ID numbers unreadable at low resolution — retrying at higher resolution...")
+            return data
         try:
             with open(pdf_path, "rb") as f:
-                pdf_bytes = f.read()
-            if not pdf_bytes:
-                self.log(f"  [ERROR] Empty file: {os.path.basename(pdf_path)}")
-                return None
+                file_bytes = f.read()
+        except Exception as e:
+            self.log(f"  [ERROR] Cannot read file {os.path.basename(pdf_path)}: {e}")
+            return None
+        if not file_bytes:
+            self.log(f"  [ERROR] Empty file: {os.path.basename(pdf_path)}")
+            return None
+        return self._call_ai(file_bytes, "application/pdf")
 
+    @staticmethod
+    def _ids_readable(data: dict) -> bool:
+        """True if at least one ID card field was extracted as a 13-digit number."""
+        if not isinstance(data, dict):
+            return False
+        id_top = data.get("id_card_top") or data.get("id_card")
+        id_body = data.get("id_card_body")
+        return bool(
+            (id_top and re.fullmatch(r"\d{13}", str(id_top)))
+            or (id_body and re.fullmatch(r"\d{13}", str(id_body)))
+        )
+
+    def _call_ai(self, file_bytes: bytes, mime_type: str) -> dict | None:
+        """Send prepared bytes to Gemini and return the parsed JSON dict, or None on failure."""
+        try:
             max_retries = 3
             for attempt in range(max_retries):
                 try:
                     response = self.model.generate_content(
                         [
-                            {"mime_type": "application/pdf", "data": pdf_bytes},
+                            {"mime_type": mime_type, "data": file_bytes},
                             GEMINI_PROMPT,
                         ]
                     )
@@ -173,14 +269,22 @@ class DocumentProcessor:
         if not isinstance(data, dict):
             return "AI response is not a JSON object."
         name = data.get("name")
-        id_card = data.get("id_card")
+        id_top = data.get("id_card_top") or data.get("id_card")
+        id_body = data.get("id_card_body")
         loan_type = data.get("loan_type")
+        signed = data.get("signed")
         if not name or not str(name).strip():
             return "Missing name."
-        if not id_card or not re.fullmatch(r"\d{13}", str(id_card)):
-            return f"Invalid ID card: {id_card!r} (must be 13 digits)."
+        top_ok = bool(id_top and re.fullmatch(r"\d{13}", str(id_top)))
+        body_ok = bool(id_body and re.fullmatch(r"\d{13}", str(id_body)))
+        if not top_ok and not body_ok:
+            return f"No valid 13-digit ID card found (top: {id_top!r}, body: {id_body!r})."
+        if top_ok and body_ok and str(id_top) != str(id_body):
+            return f"ID mismatch: top {id_top!r} != body {id_body!r}."
         if loan_type not in LOAN_TYPES:
             return f"Unknown loan type: {loan_type!r}."
+        if signed is not True:
+            return "Document is not signed."
         return None
 
     @staticmethod
@@ -210,15 +314,15 @@ class DocumentProcessor:
         self.log(f"  [MANUAL] {os.path.basename(pdf_path)} -> Manual ({reason})")
 
     def move_to_loan_folder(self, pdf_path: str, output_dir: str, data: dict):
-        name = self.sanitize_filename(data["name"])
-        id_card = str(data["id_card"])
+        id_card = str(data.get("id_card_top") or data.get("id_card") or data.get("id_card_body"))
         loan_type = data["loan_type"]
         folder_name = LOAN_TYPE_FOLDERS[loan_type]
 
         dest_dir = os.path.join(output_dir, folder_name)
         os.makedirs(dest_dir, exist_ok=True)
 
-        new_name = f"{name}_{id_card}_{self.sanitize_filename(loan_type)}.pdf"
+        ext = os.path.splitext(pdf_path)[1].lower() or ".pdf"
+        new_name = f"{id_card}{ext}"
         dest = self.unique_path(os.path.join(dest_dir, new_name))
         shutil.move(pdf_path, dest)
         self.log(f"  [OK] -> {folder_name}{os.sep}{os.path.basename(dest)}")
@@ -236,7 +340,7 @@ class DocumentProcessor:
             if self.stop_flag.is_set():
                 break
             pdfs = self.find_pdfs(folder)
-            self.log(f"[FOLDER] {os.path.basename(folder)} — {len(pdfs)} PDF(s)")
+            self.log(f"[FOLDER] {os.path.basename(folder)} — {len(pdfs)} document(s)")
 
             for pdf_path in pdfs:
                 if self.stop_flag.is_set():
@@ -788,11 +892,11 @@ class App(ctk.CTk):
             folder_count = len(folders)
             if total > 0:
                 self._file_count_label.configure(
-                    text=f"{folder_count} folder(s) found  •  {total} PDF(s) ready to process",
+                    text=f"{folder_count} folder(s) found  •  {total} document(s) ready to process",
                     text_color=COL_ACCENT)
             else:
                 self._file_count_label.configure(
-                    text="No PDFs found in source folders",
+                    text="No PDFs or images found in source folders",
                     text_color=COL_DESTRUCTIVE)
         except Exception:
             self._file_count_label.configure(text="", text_color=COL_TEXT_TERTIARY)

@@ -48,9 +48,11 @@ source .venv/bin/activate
 # 3. ติดตั้งไลบรารีที่จำเป็น
 pip install -r requirements.txt
 
-# 4. รันโปรแกรม
-python main.py
+# 4. รันโปรแกรม (หน้าตาใหม่แบบ Dashboard)
+python app.py
 ```
+
+> **หมายเหตุ:** `app.py` คือโปรแกรมหลักหน้าตาใหม่ (UI เว็บครอบด้วย pywebview) ส่วน `main.py` เป็น GUI แบบเดิม (customtkinter) ที่ยังเก็บไว้ใช้ได้
 
 หากต้องการตั้งค่า API Key ล่วงหน้าผ่าน Environment Variable เพื่อให้ระบบแสดงรหัสในช่องกรอกให้อัตโนมัติ:
 ```bash
@@ -86,7 +88,7 @@ $env:GEMINI_API_KEY="รหัส-api-key-ของคุณ"
    ```
 4. รันคำสั่งเพื่อสร้างไฟล์ `.exe`:
    ```bat
-   pyinstaller --noconfirm --onefile --windowed --name "AI_Document_Assistant" --collect-all customtkinter main.py
+   pyinstaller --noconfirm --onefile --windowed --name "AI_Document_Assistant" --add-data "web;web" --add-data "fonts;fonts" --collect-all webview app.py
    ```
 5. เมื่อการทำงานเสร็จสิ้น คุณจะได้ไฟล์สำหรับนำไปแจกจ่ายให้เจ้าหน้าที่ใช้งานได้ทันทีอยู่ที่:
    👉 **`dist\AI_Document_Assistant.exe`**
@@ -97,7 +99,9 @@ $env:GEMINI_API_KEY="รหัส-api-key-ของคุณ"
 | `--onefile` | บีบอัดโปรแกรมและไลบรารีทั้งหมดให้อยู่ในไฟล์ `.exe` เพียงไฟล์เดียว ง่ายต่อการนำไปใช้งาน |
 | `--windowed` | ไม่แสดงหน้าต่างหน้าจอ Command Prompt / Terminal สีดำเวลาเปิดโปรแกรม (แสดงเฉพาะหน้าต่าง GUI) |
 | `--name "..."` | กำหนดชื่อไฟล์โปรแกรม `.exe` ที่ได้ผลลัพธ์ |
-| `--collect-all customtkinter` | **(จำเป็นมาก)** ดึงไฟล์ธีมและไอคอนของไลบรารี CustomTkinter มารวมไว้ด้วย ไม่เช่นนั้นโปรแกรมจะเปิดไม่ติด |
+| `--add-data "web;web"` | **(จำเป็นมาก)** รวมโฟลเดอร์ `web` (HTML/CSS/JS ของหน้าโปรแกรม) เข้าไปในไฟล์ `.exe` |
+| `--add-data "fonts;fonts"` | รวมฟอนต์ภาษาไทย (Sarabun) ไว้ใช้แบบออฟไลน์ |
+| `--collect-all webview` | **(จำเป็นมาก)** ดึงไฟล์ของไลบรารี pywebview มารวมไว้ ไม่เช่นนั้นหน้าต่างโปรแกรมจะเปิดไม่ติด |
 | `--noconfirm` | เขียนทับโฟลเดอร์ผลลัพธ์เดิมโดยไม่ต้องถามยืนยัน |
 
 ---

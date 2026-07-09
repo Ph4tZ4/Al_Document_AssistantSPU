@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Document Assistant — Technical Deep Dive</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&family=Sarabun:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --primary: #4f46e5;
+    --primary-light: #e0e7ff;
+    --bg-color: #f8fafc;
+    --card-bg: #ffffff;
+    --text-main: #1e293b;
+    --text-muted: #64748b;
+    --border-color: #e2e8f0;
+
+    --success: #10b981;
+    --success-bg: #d1fae5;
+    --warning: #f59e0b;
+    --warning-bg: #fef3c7;
+    --danger: #ef4444;
+    --danger-bg: #fee2e2;
+    --info: #3b82f6;
+    --info-bg: #dbeafe;
+    --purple: #8b5cf6;
+    --purple-bg: #ede9fe;
+
+    --radius: 16px;
+    --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Sarabun', sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    line-height: 1.7;
+    padding-bottom: 80px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4 { font-family: 'Prompt', sans-serif; color: var(--text-main); font-weight: 600; }
+
+  header {
+    background: linear-gradient(135deg, #1e1b4b 0%, #4f46e5 100%);
+    color: #fff;
+    padding: 80px 16px 60px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: -20px; left: 0; right: 0; height: 40px;
+    background: var(--bg-color);
+    transform: skewY(-2deg);
+  }
+  header h1 { font-size: 2.5rem; margin-bottom: 16px; color: #fff; letter-spacing: -0.5px; }
+  header p { max-width: 900px; margin: 0 auto; font-size: 1.15rem; color: #e0e7ff; }
+  header .subtitle-badge {
+    display: inline-block; margin-top: 18px; padding: 6px 18px;
+    background: rgba(255,255,255,0.15); border-radius: 100px; font-size: 0.85rem;
+  }
+
+  .container { max-width: 1200px; width: 95%; margin: -20px auto 0; position: relative; z-index: 10; }
+
+  .card {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 32px;
+    margin-bottom: 32px;
+    border: 1px solid rgba(255,255,255,0.5);
+  }
+  .card h2 {
+    font-size: 1.5rem; margin-bottom: 24px; display: flex; align-items: center; gap: 10px;
+    border-bottom: 2px solid var(--border-color); padding-bottom: 12px;
+  }
+  .card h3 { font-size: 1.2rem; margin: 32px 0 14px; color: var(--primary); }
+  .card h4 { font-size: 1.02rem; margin: 20px 0 8px; color: var(--text-main); }
+  p { margin-bottom: 14px; }
+  ul, ol { padding-left: 24px; margin-bottom: 16px; }
+  li { margin-bottom: 8px; }
+
+  /* TOC */
+  .toc { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+  .toc a {
+    display: block; background: var(--bg-color); border: 1px solid var(--border-color);
+    border-radius: 10px; padding: 12px 16px; color: var(--primary); text-decoration: none;
+    font-weight: 500; font-size: 0.92rem; transition: background .15s;
+  }
+  .toc a:hover { background: var(--primary-light); }
+
+  code {
+    font-family: 'Fira Code', 'Cascadia Code', Consolas, monospace;
+    background: var(--bg-color); color: #be185d; padding: 2px 6px;
+    border-radius: 4px; font-size: 0.88em; border: 1px solid var(--border-color);
+  }
+  pre {
+    background: #0f172a; color: #e2e8f0; padding: 22px; border-radius: 12px;
+    overflow-x: auto; font-size: 0.85rem; line-height: 1.6; margin: 14px 0;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+  }
+  pre code { background: transparent; color: inherit; padding: 0; border: none; }
+
+  .file-tag {
+    display: inline-block; font-family: 'Fira Code', monospace; font-size: 0.78rem;
+    background: var(--primary-light); color: var(--primary); padding: 3px 10px;
+    border-radius: 6px; margin-bottom: 8px;
+  }
+
+  .note {
+    display: flex; gap: 14px; background: var(--info-bg); border: 1px solid #bfdbfe;
+    border-left: 5px solid var(--info); padding: 14px 18px; border-radius: 8px;
+    margin: 18px 0; color: #1e3a8a; font-size: 0.95rem;
+  }
+  .warn-box {
+    display: flex; gap: 14px; background: var(--warning-bg); border: 1px solid #fde68a;
+    border-left: 5px solid var(--warning); padding: 14px 18px; border-radius: 8px;
+    margin: 18px 0; color: #78350f; font-size: 0.95rem;
+  }
+  .danger-box {
+    display: flex; gap: 14px; background: var(--danger-bg); border: 1px solid #fecaca;
+    border-left: 5px solid var(--danger); padding: 14px 18px; border-radius: 8px;
+    margin: 18px 0; color: #7f1d1d; font-size: 0.95rem;
+  }
+
+  .table-responsive { overflow-x: auto; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; margin: 14px 0; }
+  th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--border-color); vertical-align: top; }
+  th { background: var(--bg-color); color: var(--text-muted); font-family: 'Prompt', sans-serif; font-weight: 500; font-size: 0.9rem; }
+  th:first-child { border-top-left-radius: 8px; }
+  th:last-child { border-top-right-radius: 8px; }
+  td code { white-space: nowrap; }
+
+  .badge {
+    display: inline-flex; align-items: center; padding: 4px 12px; border-radius: 20px;
+    font-size: 0.82rem; font-weight: 600; font-family: 'Prompt', sans-serif;
+  }
+  .badge.red { background: var(--danger-bg); color: var(--danger); }
+  .badge.orange { background: var(--warning-bg); color: var(--warning); }
+  .badge.blue { background: var(--info-bg); color: var(--info); }
+  .badge.green { background: var(--success-bg); color: var(--success); }
+  .badge.purple { background: var(--purple-bg); color: var(--purple); }
+
+  .flow-diagram {
+    background: var(--bg-color); border-radius: 12px; padding: 20px; margin: 18px 0;
+    font-family: 'Fira Code', monospace; font-size: 0.85rem; overflow-x: auto; white-space: pre;
+    border: 1px solid var(--border-color); line-height: 1.8;
+  }
+
+  .fn-card {
+    border: 1px solid var(--border-color); border-radius: 12px; padding: 18px 20px;
+    margin: 16px 0; background: #fdfdff;
+  }
+  .fn-sig {
+    font-family: 'Fira Code', monospace; font-size: 0.88rem; background: #0f172a;
+    color: #93c5fd; padding: 10px 14px; border-radius: 8px; display: inline-block; margin-bottom: 10px;
+  }
+
+  .grid-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-top: 20px; }
+  .stat-box { background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px 14px; text-align: center; }
+  .stat-box strong { display: block; font-size: 1.8rem; color: var(--primary); font-family: 'Prompt', sans-serif; margin-bottom: 6px; }
+  .stat-box span { font-size: 0.88rem; color: var(--text-muted); }
+
+  footer { text-align: center; color: var(--text-muted); font-size: 0.9rem; margin-top: 50px; font-family: 'Prompt', sans-serif; }
+
+  @media (max-width: 768px) {
+    .container { width: 100%; padding: 0 16px; }
+    .card { padding: 20px; }
+    header { padding: 60px 16px 40px; }
+    header h1 { font-size: 1.8rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🔬 Technical Deep Dive</h1>
+  <p>รายละเอียดเชิงลึกระดับโค้ดของระบบ AI Document Assistant — ทุกฟังก์ชัน ทุกตัวแปร ทุก edge case และเหตุผลเบื้องหลังการออกแบบ</p>
+  <span class="subtitle-badge">อ้างอิงจาก main.py (v1.2.0)</span>
+</header>
+
+<div class="container">
+
+  <!-- TOC -->
+  <div class="card">
+    <h2>📑 สารบัญ</h2>
+    <div class="toc">
+      <a href="#overview">1. ภาพรวมสถาปัตยกรรม</a>
+      <a href="#config">2. ค่าคงที่และการตั้งค่า</a>
+      <a href="#prompt">3. Gemini Prompt แบบเต็ม</a>
+      <a href="#discovery">4. การค้นหาไฟล์ (Folder/File Discovery)</a>
+      <a href="#image">5. กระบวนการย่อรูปภาพ</a>
+      <a href="#extract">6. ตรรกะการเรียก AI (extract_data)</a>
+      <a href="#retry">7. กลไก Auto-Retry ความละเอียด</a>
+      <a href="#ratelimit">8. การจัดการ Rate Limit / Error</a>
+      <a href="#validate">9. ตรรกะการตรวจสอบ (validate)</a>
+      <a href="#filemove">10. การเปลี่ยนชื่อและย้ายไฟล์</a>
+      <a href="#mainloop">11. Main Loop (run)</a>
+      <a href="#gui">12. โครงสร้าง GUI (CustomTkinter)</a>
+      <a href="#threading">13. โมเดล Threading และ Queue</a>
+      <a href="#edgecases">14. Edge Cases ที่ระบบรองรับ</a>
+      <a href="#deps">15. Dependencies และการติดตั้ง</a>
+    </div>
+  </div>
+
+  <!-- 1. Overview -->
+  <div class="card" id="overview">
+    <h2>🏗️ 1. ภาพรวมสถาปัตยกรรม</h2>
+    <p>ระบบทั้งหมดอยู่ในไฟล์เดียว <code>main.py</code> แบ่งออกเป็น 2 ส่วนหลักตามคอมเมนต์ในไฟล์:</p>
+    <div class="flow-diagram">main.py
+├── CONFIGURATION (บรรทัด 41-73)
+│   ├── LOAN_TYPES, LOAN_TYPE_FOLDERS
+│   ├── MANUAL_FOLDER_NAME, PROCESSED_FOLDER_PREFIX
+│   ├── GEMINI_MODEL_NAME
+│   ├── IMAGE_EXTENSIONS
+│   └── MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION_RETRY, JPEG_QUALITY
+│
+├── GEMINI_PROMPT (บรรทัด 79-119)  ── string เดียวที่ควบคุมพฤติกรรม AI ทั้งหมด
+│
+├── class DocumentProcessor        ── "Business Logic" — ไม่รู้จัก GUI เลย
+│   ├── find_newdocs_folders()
+│   ├── find_pdfs()
+│   ├── prepare_image()
+│   ├── extract_data()
+│   ├── _ids_readable()
+│   ├── _call_ai()
+│   ├── validate()
+│   ├── sanitize_filename()
+│   ├── unique_path()
+│   ├── move_to_manual()
+│   ├── move_to_loan_folder()
+│   └── run()                      ── entry point หลักของ business logic
+│
+└── GUI (CustomTkinter)
+    ├── class Tooltip
+    └── class App(ctk.CTk)
+        ├── _build_ui / _build_titlebar / _build_sidebar / _build_content
+        ├── _build_process_page / _build_settings_page
+        ├── _start / _stop / _run_worker  ── เชื่อมกับ DocumentProcessor
+        └── log() / _poll_log_queue()     ── thread-safe logging ผ่าน queue.Queue</div>
+    <p>หลักการออกแบบสำคัญ: <strong>แยก Business Logic ออกจาก GUI อย่างสมบูรณ์</strong> — คลาส <code>DocumentProcessor</code> รับเข้ามาแค่ <code>api_key</code> และ <code>log_fn</code> (callback function) เท่านั้น ไม่ import อะไรจาก <code>App</code> เลย ทำให้สามารถทดสอบ (unit test) หรือเรียกใช้แบบ CLI ได้โดยไม่ต้องเปิดหน้าต่าง GUI</p>
+  </div>
+
+  <!-- 2. Config -->
+  <div class="card" id="config">
+    <h2>⚙️ 2. ค่าคงที่และการตั้งค่า (Configuration Constants)</h2>
+    <div class="table-responsive">
+      <table>
+        <thead><tr><th>ตัวแปร</th><th>ค่าเริ่มต้น</th><th>คำอธิบาย</th></tr></thead>
+        <tbody>
+          <tr><td><code>LOAN_TYPES</code></td><td><code>["Type1","Type2","Type3","Type4"]</code></td><td>รายการประเภทกู้ยืมที่ถูกต้อง — AI ถูกบังคับให้เลือกค่าใดค่าหนึ่งในนี้เท่านั้น</td></tr>
+          <tr><td><code>LOAN_TYPE_FOLDERS</code></td><td><code>dict</code> แม็บ 1:1 กับ LOAN_TYPES</td><td>ชื่อโฟลเดอร์ปลายทางของแต่ละประเภท (สร้างขึ้นภายใน Output Directory)</td></tr>
+          <tr><td><code>MANUAL_FOLDER_NAME</code></td><td><code>"Manual"</code></td><td>โฟลเดอร์รวมไฟล์ที่ตรวจสอบไม่ผ่าน</td></tr>
+          <tr><td><code>PROCESSED_FOLDER_PREFIX</code></td><td><code>"NewDocs"</code></td><td>ใช้จับคู่โฟลเดอร์ต้นทาง (รองรับ NewDocs, NewDocs 2, NewDocs copy ฯลฯ)</td></tr>
+          <tr><td><code>GEMINI_MODEL_NAME</code></td><td><code>"gemini-2.5-flash"</code></td><td>โมเดลที่เรียกผ่าน <code>google.generativeai</code>; เปลี่ยนเป็น <code>gemini-2.5-pro</code> ได้เพื่อความแม่นยำสูงขึ้น (ราคาแพงกว่า)</td></tr>
+          <tr><td><code>IMAGE_EXTENSIONS</code></td><td><code>{'{'}.jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.heic{'}'}</code></td><td>นามสกุลไฟล์รูปภาพที่ระบบจะรับพิจารณาเป็นเอกสาร</td></tr>
+          <tr><td><code>MAX_IMAGE_DIMENSION</code></td><td><code>2048</code></td><td>ด้านยาวสุดของภาพ (พิกเซล) ในการส่งรอบแรก</td></tr>
+          <tr><td><code>MAX_IMAGE_DIMENSION_RETRY</code></td><td><code>3072</code></td><td>ด้านยาวสุดของภาพเมื่อ Retry รอบสอง (กรณีอ่านเลขบัตรไม่ออก)</td></tr>
+          <tr><td><code>JPEG_QUALITY</code></td><td><code>85</code></td><td>คุณภาพการบีบอัด JPEG ก่อนส่งให้ AI (0-100)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note">
+      ตัวแปรทั้งหมดถูกประกาศเป็น Module-level constant (ตัวพิมพ์ใหญ่ทั้งหมดตาม PEP8) ทำให้ผู้ดูแลระบบแก้ไขได้จากจุดเดียวที่ด้านบนของไฟล์โดยไม่ต้องไล่หาในโค้ด
+    </div>
+  </div>
+
+  <!-- 3. Prompt -->
+  <div class="card" id="prompt">
+    <h2>💬 3. Gemini Prompt แบบเต็ม</h2>
+    <p><code>GEMINI_PROMPT</code> เป็น f-string ที่ประกอบด้วยชื่อ Type จาก <code>LOAN_TYPES</code> โดยอัตโนมัติ (ถ้าเปลี่ยนชื่อ Type ใน config, Prompt จะอัปเดตตามทันทีโดยไม่ต้องแก้ข้อความ)</p>
+    <div class="file-tag">main.py:79-119</div>
+    <pre><code>GEMINI_PROMPT = f"""You are a document data extraction and verification system for a loan department.
+You will receive a scanned document (PDF or photo/image, possibly in Thai or English).
+It is a Thai student-loan confirmation form (แบบยืนยันการเบิกเงินกู้ยืม กองทุนเงินให้กู้ยืมเพื่อการศึกษา).
+
+Read the document carefully and extract EXACTLY these fields:
+
+1. "name": ชื่อ-นามสกุลผู้กู้ (หลังคำว่า "ข้าพเจ้า")
+2. "id_card_top": เลขบัตร 13 หลัก บริเวณบาร์โค้ดด้านบน (DIGITS ONLY)
+3. "id_card_body": เลขบัตร 13 หลัก ที่บรรทัด "เลขบัตรประจำตัวประชาชน" ในส่วนที่ 1
+4. "loan_type": อ่านจากบรรทัดที่ขึ้นต้นด้วย "ลักษณะที่" แล้วแม็บเป็น Type1-Type4
+   (fallback: "ประเภท" หรือ "Type")
+5. "signed": true/false — ดูช่องลายเซ็นผู้กู้ยืมเงิน หากมีรอยหมึกแม้แต่จุดเดียวถือว่า signed=true
+
+STRICT RULES:
+- ตอบเป็น JSON object เดียวเท่านั้น ห้าม markdown/code fence
+- ต้องมี key ครบ 5 ตัว: name, id_card_top, id_card_body, loan_type, signed
+- id_card_top และ id_card_body ต้องอ่านแยกกันอิสระ ห้ามก็อปข้ามช่อง
+- ถ้าอ่านไม่ได้ ให้ใส่ null ห้ามเดา
+"""</code></pre>
+    <h4>ทำไมต้องแยก id_card_top / id_card_body?</h4>
+    <p>เพื่อสร้างกลไก <strong>Cross-Validation</strong> — ถ้า AI สับสนหรือ hallucinate แล้วก็อปเลขบัตรจากช่องเดียวไปทั้งสองช่อง ระบบจะตรวจไม่พบความผิดพลาด ดังนั้น Prompt จึงเขียนย้ำ (บรรทัด 109-110) ว่าห้ามคัดลอกข้ามกัน เพื่อให้การเปรียบเทียบใน <code>validate()</code> มีความหมายจริง ๆ</p>
+    <h4>ทำไม signed ต้องระบุว่า "lenient"?</h4>
+    <p>โมเดล Vision LLM มักจะประเมิน "ลายเซ็นที่สมบูรณ์" อย่างเข้มงวดเกินไปและตอบ false แม้มีรอยปากกาอยู่ Prompt จึงระบุชัดเจนว่าจุดเดียวหรือรอยขีดเล็ก ๆ ก็นับเป็น signed=true เพื่อลด False Negative ที่ทำให้เอกสารที่เซ็นแล้วไปตกอยู่ในโฟลเดอร์ Manual โดยไม่จำเป็น</p>
+  </div>
+
+  <!-- 4. Discovery -->
+  <div class="card" id="discovery">
+    <h2>📂 4. การค้นหาไฟล์ (Folder/File Discovery)</h2>
+
+    <div class="fn-card">
+      <span class="fn-sig">find_newdocs_folders(source_dir: str) -&gt; list</span>
+      <p>ใช้ <code>glob.glob(source_dir + "/NewDocs*")</code> เพื่อหาทุกโฟลเดอร์ที่ชื่อขึ้นต้นด้วย <code>NewDocs</code> (รองรับ <code>NewDocs</code>, <code>NewDocs 2</code>, <code>NewDocs copy</code> ฯลฯ) มี fast-path พิเศษ: ถ้าโฟลเดอร์ที่ผู้ใช้เลือกเอง (basename) ขึ้นต้นด้วย <code>NewDocs</code> อยู่แล้ว จะ return <code>[source_dir]</code> ทันทีโดยไม่ค้นลึกลงไป — ป้องกันกรณีผู้ใช้เลือกโฟลเดอร์ <code>NewDocs</code> ตรง ๆ แทนที่จะเป็นโฟลเดอร์แม่</p>
+    </div>
+
+    <div class="fn-card">
+      <span class="fn-sig">find_pdfs(folder: str) -&gt; list</span>
+      <p>แม้ชื่อฟังก์ชันจะเป็น <code>find_pdfs</code> (ชื่อเดิมจากตอนที่รองรับแค่ PDF) แต่ปัจจุบันมันเดิน glob ทุกไฟล์ในโฟลเดอร์ (<code>glob.glob(folder + "/*")</code>) แล้วกรองด้วยเงื่อนไข:</p>
+      <pre><code>ext == ".pdf" or ext in IMAGE_EXTENSIONS</code></pre>
+      <p>ผลลัพธ์ผ่าน <code>sorted(set(...))</code> เพื่อลบไฟล์ซ้ำ (กรณี glob pattern คาบเกี่ยว) และให้ลำดับที่คงที่ (deterministic) ทุกครั้งที่รัน</p>
+    </div>
+  </div>
+
+  <!-- 5. Image -->
+  <div class="card" id="image">
+    <h2>🖼️ 5. กระบวนการย่อรูปภาพ (prepare_image)</h2>
+    <div class="fn-card">
+      <span class="fn-sig">prepare_image(image_path: str, max_dim: int = MAX_IMAGE_DIMENSION) -&gt; bytes | None</span>
+      <p>ขั้นตอนการทำงาน:</p>
+      <ol>
+        <li>เปิดไฟล์ด้วย <code>PIL.Image.open()</code> แล้วแปลงเป็น <code>RGB</code> (กัน error กรณีไฟล์เป็น CMYK, Palette, RGBA ที่ Gemini อาจไม่รองรับ)</li>
+        <li>คำนวณ <code>longest = max(w, h)</code></li>
+        <li>ถ้า <code>longest &gt; max_dim</code> — คำนวณ scale factor แล้ว resize ด้วย <code>Image.LANCZOS</code> (อัลกอริทึม resampling คุณภาพสูงสุดใน Pillow เหมาะกับข้อความ/ลายเส้น)</li>
+        <li>เขียนผลลัพธ์ลง <code>io.BytesIO()</code> เป็น JPEG คุณภาพ <code>JPEG_QUALITY=85</code> พร้อม <code>optimize=True</code> (ลด byte เพิ่มโดยไม่เสียคุณภาพ)</li>
+        <li>คืนค่าเป็น <code>bytes</code> ดิบ พร้อมส่งเข้า Gemini โดยตรง (ไม่ต้องเขียนไฟล์ชั่วคราวลงดิสก์)</li>
+      </ol>
+      <p>Aspect ratio จะถูกรักษาไว้เสมอ (คำนวณ new_size จาก scale เดียวกันทั้ง w และ h) — ไม่มีการ crop หรือบิดเบือนภาพ</p>
+    </div>
+    <div class="warn-box">⚠️ ถ้าไฟล์เสียหายหรือ Pillow เปิดไม่ได้ ฟังก์ชันจะ catch exception, log ข้อความ <code>[ERROR] Cannot read image ...</code> แล้ว return <code>None</code> — ทำให้ <code>extract_data</code> รู้ทันทีว่าไฟล์นี้ไปต่อไม่ได้</div>
+  </div>
+
+  <!-- 6. Extract -->
+  <div class="card" id="extract">
+    <h2>🧠 6. ตรรกะการเรียก AI (extract_data)</h2>
+    <div class="fn-card">
+      <span class="fn-sig">extract_data(pdf_path: str) -&gt; dict | None</span>
+      <p>ฟังก์ชันนี้เป็นจุดตัดสินใจแรกว่าไฟล์เป็น PDF หรือรูปภาพ โดยเช็คจาก <code>os.path.splitext(pdf_path)[1].lower()</code>:</p>
+      <h4>เส้นทางที่ 1 — เป็นรูปภาพ (ext in IMAGE_EXTENSIONS)</h4>
+      <p>เข้าสู่ลูป <code>for max_dim in (MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION_RETRY)</code> — รายละเอียดในหัวข้อถัดไป (Auto-Retry)</p>
+      <h4>เส้นทางที่ 2 — เป็น PDF</h4>
+      <p>อ่านไฟล์ทั้งก้อนด้วย <code>open(path, "rb").read()</code> ตรง ๆ (ไม่มีการย่อขนาด เพราะ Gemini รองรับ PDF หลายหน้าโดยตรงและ PDF มักมีขนาดไฟล์เล็กกว่ารูปถ่ายอยู่แล้ว) แล้วส่งต่อด้วย mime type <code>application/pdf</code></p>
+    </div>
+  </div>
+
+  <!-- 7. Retry -->
+  <div class="card" id="retry">
+    <h2>🔁 7. กลไก Auto-Retry ความละเอียด</h2>
+    <p>นี่คือกลไกสำคัญที่แก้ปัญหาภาพถ่ายความละเอียดสูงจากมือถือ (เช่น 4536×8064) ที่เมื่อย่อครั้งเดียวแล้วตัวเลขอาจเบลอเกินอ่าน:</p>
+    <div class="file-tag">main.py:191-202</div>
+    <pre><code>data = None
+for max_dim in (MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION_RETRY):  # 2048, 3072
+    file_bytes = self.prepare_image(pdf_path, max_dim)
+    if not file_bytes:
+        return None
+    data = self._call_ai(file_bytes, "image/jpeg")
+    if data is not None and self._ids_readable(data):
+        return data          # สำเร็จ → คืนค่าทันที ไม่ต้อง retry
+    if max_dim != MAX_IMAGE_DIMENSION_RETRY:
+        self.log("  [RETRY] ID numbers unreadable at low resolution — retrying...")
+return data                  # หมดรอบแล้วยังอ่านไม่ได้ → คืนผลลัพธ์รอบสุดท้าย (อาจมี field อื่นครบ)</code></pre>
+    <h4>เกณฑ์การตัดสินว่า "ต้อง Retry" — _ids_readable()</h4>
+    <div class="fn-card">
+      <span class="fn-sig">_ids_readable(data: dict) -&gt; bool</span>
+      <p>ตรวจว่า <strong>ทั้ง</strong> <code>id_card_top</code> และ <code>id_card_body</code> เป็นตัวเลข regex <code>\d{'{'}13{'}'}</code> ครบทั้งคู่หรือไม่ ถ้าไม่ครบแม้แต่ช่องเดียว ถือว่า "อ่านไม่ได้" และไป retry ที่ความละเอียดสูงขึ้น</p>
+    </div>
+    <div class="note">
+      💡 การออกแบบนี้ช่วยประหยัด Token โดยเฉลี่ย เพราะเอกสารส่วนใหญ่อ่านผ่านตั้งแต่รอบแรกที่ 2048px (ราคาถูกกว่า) และจะ "จ่ายแพงขึ้น" เฉพาะไฟล์ที่จำเป็นจริง ๆ เท่านั้น (retry ที่ 3072px)
+    </div>
+  </div>
+
+  <!-- 8. Rate limit -->
+  <div class="card" id="ratelimit">
+    <h2>🚦 8. การจัดการ Rate Limit / Error (_call_ai)</h2>
+    <div class="fn-card">
+      <span class="fn-sig">_call_ai(file_bytes: bytes, mime_type: str) -&gt; dict | None</span>
+      <p>ฟังก์ชันนี้คือจุดเดียวที่เรียก <code>self.model.generate_content(...)</code> จริง ๆ ทั้งสำหรับ PDF และรูปภาพ (ถูก refactor ออกมาให้ extract_data เรียกใช้ร่วมกัน) มีลอจิกดังนี้:</p>
+      <ol>
+        <li>วนลูปสูงสุด <code>max_retries = 3</code> ครั้ง</li>
+        <li>เรียก Gemini แล้วดึง <code>response.text</code></li>
+        <li>ใช้ regex <code>re.sub(r"^```(?:json)?\s*|\s*```$", "", raw)</code> ลบ markdown code fence ที่ AI อาจใส่มาโดยไม่ตั้งใจ (แม้ตั้ง <code>response_mime_type="application/json"</code> ไว้แล้วก็ตาม เป็นการป้องกันสองชั้น)</li>
+        <li><code>json.loads(raw)</code> แปลงเป็น dict แล้ว return</li>
+      </ol>
+      <h4>การตรวจจับ Rate Limit (HTTP 429)</h4>
+      <p>ถ้า exception message มีคำว่า <code>"429"</code>, <code>"quota"</code>, หรือ <code>"rate"</code> (case-insensitive) ระบบจะ:</p>
+      <ul>
+        <li>พยายามดึงเวลาที่ต้องรอจากข้อความ error ด้วย regex <code>retry in ([\d.]+)s</code></li>
+        <li>ถ้าดึงได้ → รอ <code>wait_time = ตัวเลขที่ดึงได้ + 2</code> วินาที (buffer กันคลาดเคลื่อน)</li>
+        <li>ถ้าดึงไม่ได้ → รอ default <code>40</code> วินาที</li>
+        <li>ใช้ <code>time.sleep(wait_time)</code> แล้ว <code>continue</code> ไป attempt ถัดไป</li>
+        <li>ถ้าครบ 3 ครั้งแล้วยังไม่สำเร็จ → log error และ return <code>None</code></li>
+      </ul>
+      <h4>Error อื่น ๆ ที่ไม่ใช่ Rate Limit</h4>
+      <p>จะถูก <code>raise</code> ต่อออกไปให้ block ข้างนอกจับด้วย <code>except json.JSONDecodeError</code> (JSON เพี้ยน) หรือ <code>except Exception</code> (error ทั่วไป เช่น network, API key ผิด) แล้ว log พร้อม return <code>None</code></p>
+    </div>
+  </div>
+
+  <!-- 9. Validate -->
+  <div class="card" id="validate">
+    <h2>✅ 9. ตรรกะการตรวจสอบ (validate)</h2>
+    <div class="fn-card">
+      <span class="fn-sig">validate(data: dict) -&gt; str | None</span>
+      <p>ฟังก์ชัน static ที่รับ dict จาก AI แล้วตรวจตามลำดับ (fail-fast — เจอผิดจุดแรกก็ return ทันที):</p>
+    </div>
+    <div class="table-responsive">
+      <table>
+        <thead><tr><th>ลำดับ</th><th>เงื่อนไข</th><th>ข้อความ error ที่คืน</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td><code>data</code> ไม่ใช่ dict</td><td><code>"AI response is not a JSON object."</code></td></tr>
+          <tr><td>2</td><td><code>name</code> ว่างเปล่า/ไม่มี</td><td><code>"Missing name."</code></td></tr>
+          <tr><td>3</td><td><code>id_card_top</code> ไม่ตรง regex 13 หลัก</td><td><code>"Invalid top ID card: ..."</code></td></tr>
+          <tr><td>4</td><td><code>id_card_body</code> ไม่ตรง regex 13 หลัก</td><td><code>"Invalid body ID card: ..."</code></td></tr>
+          <tr><td>5</td><td><code>id_card_top != id_card_body</code></td><td><code>"ID mismatch: top ... != body ..."</code></td></tr>
+          <tr><td>6</td><td><code>loan_type</code> ไม่อยู่ใน <code>LOAN_TYPES</code></td><td><code>"Unknown loan type: ..."</code></td></tr>
+          <tr><td>7</td><td><code>signed is not True</code></td><td><code>"Document is not signed."</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note">
+      <strong>Backward compatibility:</strong> โค้ดใช้ <code>data.get("id_card_top") or data.get("id_card")</code> — รองรับทั้งฟิลด์ใหม่ <code>id_card_top</code> และฟิลด์เก่า <code>id_card</code> (จาก Prompt เวอร์ชันก่อนหน้าที่มีฟิลด์เดียว) ป้องกัน crash หากมี response ค้างจาก cache หรือโมเดลรุ่นเก่า
+    </div>
+    <div class="danger-box">🔒 หมายเหตุด้านความเข้มงวด: เงื่อนไข <code>signed is not True</code> ใช้ <code>is not True</code> แทน <code>not signed</code> โดยตั้งใจ — เพื่อให้ <code>None</code> (อ่านไม่ได้) และ <code>False</code> (ไม่เซ็น) ถูกปฏิเสธเหมือนกัน มีแค่ <code>True</code> ที่ชัดเจนเท่านั้นที่ผ่าน</div>
+  </div>
+
+  <!-- 10. File move -->
+  <div class="card" id="filemove">
+    <h2>📁 10. การเปลี่ยนชื่อและย้ายไฟล์</h2>
+
+    <div class="fn-card">
+      <span class="fn-sig">sanitize_filename(text: str) -&gt; str</span>
+      <p>ลบอักขระที่ห้ามใช้ในชื่อไฟล์ Windows ด้วย regex <code>[&lt;&gt;:"/\\|?*\x00-\x1f]</code> แล้วยุบช่องว่างซ้ำด้วย <code>re.sub(r"\s+", " ", text)</code> — ออกแบบมาให้ไฟล์ที่สร้างบน macOS/Linux ยังเปิดได้ปกติเมื่อย้ายไป Windows</p>
+    </div>
+
+    <div class="fn-card">
+      <span class="fn-sig">unique_path(path: str) -&gt; str</span>
+      <p>ถ้าปลายทางมีไฟล์ชื่อซ้ำอยู่แล้ว จะเติม <code>(1)</code>, <code>(2)</code>, ... ต่อท้ายชื่อไฟล์ (ก่อนนามสกุล) วนจนกว่าจะเจอชื่อที่ไม่ซ้ำ — ป้องกันการเขียนทับไฟล์เดิมโดยไม่ตั้งใจ</p>
+    </div>
+
+    <div class="fn-card">
+      <span class="fn-sig">move_to_manual(pdf_path, output_dir, reason: str)</span>
+      <p>สร้างโฟลเดอร์ <code>{'{'}output_dir{'}'}/Manual</code> (ถ้ายังไม่มี) แล้วย้ายไฟล์เข้าไปโดย<strong>คงชื่อไฟล์เดิม</strong> (ไม่เปลี่ยนชื่อ เพราะข้อมูลอาจไม่ครบ/ไม่ถูกต้อง) พร้อม log บรรทัด <code>[MANUAL] ... -&gt; Manual (เหตุผล)</code></p>
+    </div>
+
+    <div class="fn-card">
+      <span class="fn-sig">move_to_loan_folder(pdf_path, output_dir, data: dict)</span>
+      <p>สร้างชื่อไฟล์ใหม่ตามรูปแบบ:</p>
+      <pre><code>{'{'}name{'}'}_{'{'}id_card{'}'}_{'{'}loan_type{'}'}{'{'}ext{'}'}
+ตัวอย่าง: Somchai Jaidee_1234567890123_Type1.jpg</code></pre>
+      <p>โดย <code>ext</code> ดึงมาจากนามสกุลไฟล์ต้นฉบับ (<code>.pdf</code>, <code>.jpg</code> ฯลฯ) เพื่อคงรูปแบบไฟล์เดิมไว้ — เป็นจุดที่แก้ไขล่าสุดจากเดิมที่ hardcode เป็น <code>.pdf</code> เสมอ (เคยทำให้ไฟล์รูปภาพถูกเปลี่ยนนามสกุลผิดเป็น .pdf)</p>
+    </div>
+  </div>
+
+  <!-- 11. Main loop -->
+  <div class="card" id="mainloop">
+    <h2>🔄 11. Main Loop (run)</h2>
+    <div class="fn-card">
+      <span class="fn-sig">run(source_dir: str, output_dir: str)</span>
+      <p>Entry point หลักที่ GUI เรียกใช้ผ่าน Thread แยก ทำงานตามลำดับ:</p>
+      <ol>
+        <li>เรียก <code>find_newdocs_folders()</code> — ถ้าไม่เจอโฟลเดอร์เลย log <code>[WARN]</code> แล้ว return ทันที</li>
+        <li>วนลูปแต่ละโฟลเดอร์ ตรวจ <code>self.stop_flag.is_set()</code> ทุกรอบ (รองรับปุ่ม Stop จาก GUI)</li>
+        <li>ในแต่ละโฟลเดอร์ เรียก <code>find_pdfs()</code> แล้ว log จำนวนเอกสารที่พบ</li>
+        <li>วนลูปแต่ละไฟล์: เรียก <code>extract_data()</code> → ถ้า <code>None</code> ไป Manual ด้วยเหตุผล <code>"AI could not read file"</code></li>
+        <li>ถ้าอ่านได้ เรียก <code>validate()</code> → ถ้ามี error string ไป Manual ด้วยเหตุผลนั้น</li>
+        <li>ถ้าผ่านทุกเงื่อนไข เรียก <code>move_to_loan_folder()</code> ห่อด้วย <code>try/except</code> — ถ้า move ล้มเหลว (เช่น permission error) จะ fallback ไป Manual แทนที่จะ crash โปรแกรมทั้งตัว</li>
+        <li>จบด้วย log สรุป <code>[DONE] Sorted: X | Manual review: Y</code></li>
+      </ol>
+    </div>
+    <div class="grid-stats">
+      <div class="stat-box"><strong>1</strong><span>Log line ต่อไฟล์<br>ตอนเริ่ม Process</span></div>
+      <div class="stat-box"><strong>2</strong><span>เส้นทางออก<br>(Loan Folder / Manual)</span></div>
+      <div class="stat-box"><strong>0</strong><span>Try/except ที่ปล่อยให้<br>โปรแกรม crash</span></div>
+    </div>
+  </div>
+
+  <!-- 12. GUI -->
+  <div class="card" id="gui">
+    <h2>🎨 12. โครงสร้าง GUI (CustomTkinter)</h2>
+    <p>สร้างด้วย <code>customtkinter</code> (ห่อ Tkinter ให้ดูทันสมัย) รองรับ Light/Dark mode ผ่าน tuple สี <code>(light, dark)</code> เช่น <code>COL_ACCENT = ("#007AFF", "#0A84FF")</code></p>
+    <div class="flow-diagram">App(ctk.CTk)
+├── window (CTkFrame หลัก, grid 2x2)
+│   ├── titlebar (row=0, colspan=2)   → ปุ่ม Menu, ชื่อแอป, Light/Dark toggle
+│   ├── sidebar_container (row=1, col=0)
+│   │   └── sidebar → ปุ่ม Navigation: Process Documents / Settings
+│   └── content (row=1, col=1)
+│       ├── process_page  (default page)
+│       │   ├── folders_card  → Source/Output Directory + Browse buttons
+│       │   ├── actions        → Start/Stop buttons
+│       │   ├── progress_bar
+│       │   ├── stats_frame    → Sorted / Manual Review / Time Elapsed
+│       │   └── log_card       → CTkTextbox (Activity Log) + Clear button
+│       └── settings_page
+│           ├── api_card       → Gemini API Key input (show/hide, save)
+│           ├── info_card      → แสดงค่า config แบบ read-only
+│           └── about_card     → ข้อมูลเวอร์ชันแอป</div>
+    <h4>ฟังก์ชันช่วยสร้าง UI ที่นำกลับมาใช้ซ้ำ</h4>
+    <ul>
+      <li><code>sf(size, weight)</code> — สร้าง <code>CTkFont</code> ด้วยฟอนต์ระบบ (<code>.AppleSystemUIFont</code>) แบบสั้น ๆ</li>
+      <li><code>_card(parent, shadow=True)</code> — สร้างการ์ดพร้อมเงา (วางเฟรมสีเทาไว้ข้างหลังแล้ว offset ลง 2px จำลอง drop-shadow เพราะ Tkinter ไม่มี box-shadow จริง)</li>
+      <li><code>_pack_card()</code> — pack wrapper ของการ์ดที่มีเงาแทนตัวการ์ดตรง ๆ</li>
+      <li><code>_field_row()</code> — สร้างแถว label+entry+browse button ใช้ซ้ำได้ทั้ง Source/Output Directory</li>
+      <li><code>class Tooltip</code> — bind event <code>&lt;Enter&gt;</code>/<code>&lt;Leave&gt;</code> เพื่อโชว์กล่องข้อความลอยเมื่อ hover</li>
+    </ul>
+  </div>
+
+  <!-- 13. Threading -->
+  <div class="card" id="threading">
+    <h2>🧵 13. โมเดล Threading และ Queue</h2>
+    <p>Tkinter ไม่ thread-safe — ห้ามอัปเดต widget จาก thread อื่นโดยตรง ระบบจึงใช้สถาปัตยกรรม Producer/Consumer:</p>
+    <div class="flow-diagram">Worker Thread (_run_worker)              Main/GUI Thread
+──────────────────────────              ────────────────
+processor.run(src, out)                  after(100, _poll_log_queue)  ← เรียกซ้ำทุก 100ms
+  └─ self.log(msg)                              │
+       └─ log_queue.put(msg)  ───────────────►  log_queue.get_nowait()
+                                                 │
+finally:                                        ├─ ถ้า msg == "__WORKER_DONE__"
+  log_queue.put("__WORKER_DONE__")               │    → เปิดปุ่ม Start, ปิดปุ่ม Stop
+                                                 ├─ ถ้ามี "[OK]" → self._stat_ok += 1
+                                                 ├─ ถ้ามี "[MANUAL]" → self._stat_manual += 1
+                                                 └─ เขียนข้อความลง log_box (CTkTextbox)</div>
+    <ul>
+      <li><code>self.worker = threading.Thread(target=self._run_worker, args=(src, out), daemon=True)</code> — ตั้งเป็น daemon thread เพื่อไม่บล็อกการปิดโปรแกรม</li>
+      <li><code>self.processor.stop_flag = threading.Event()</code> — ปุ่ม Stop เรียก <code>stop_flag.set()</code> แล้ว loop ใน <code>run()</code> เช็คสถานะนี้ทุกรอบไฟล์/โฟลเดอร์เพื่อหยุดแบบนุ่มนวล (finish ไฟล์ปัจจุบันก่อน)</li>
+      <li>Progress bar คำนวณจาก <code>(stat_ok + stat_manual) / stat_total</code> ที่ประเมินไว้ล่วงหน้าตอนกด Start</li>
+    </ul>
+  </div>
+
+  <!-- 14. Edge cases -->
+  <div class="card" id="edgecases">
+    <h2>🧩 14. Edge Cases ที่ระบบรองรับ</h2>
+    <div class="table-responsive">
+      <table>
+        <thead><tr><th>สถานการณ์</th><th>พฤติกรรมระบบ</th></tr></thead>
+        <tbody>
+          <tr><td>ไฟล์ว่างเปล่า (0 bytes)</td><td><code>extract_data</code> ตรวจ <code>if not file_bytes</code> → log error → return None → ไป Manual</td></tr>
+          <tr><td>ไฟล์รูปเสียหาย/เปิดไม่ได้</td><td><code>prepare_image</code> catch exception → return None → หยุดที่ extract_data ทันที</td></tr>
+          <tr><td>AI ตอบ markdown code fence (```json ... ```)</td><td>ถูก strip ด้วย regex ก่อน <code>json.loads</code></td></tr>
+          <tr><td>AI ตอบ JSON ผิดรูปแบบ</td><td>catch <code>json.JSONDecodeError</code> → log → return None</td></tr>
+          <tr><td>Rate limit (429)</td><td>Auto-retry สูงสุด 3 ครั้ง พร้อม backoff ตามเวลาที่ API แนะนำ</td></tr>
+          <tr><td>เลขบัตรอ่านไม่ออกที่ความละเอียดต่ำ</td><td>Auto-retry ที่ความละเอียดสูงขึ้น (2048→3072px)</td></tr>
+          <tr><td>เลขบัตรบนกับล่างไม่ตรงกัน</td><td><code>validate()</code> ปฏิเสธด้วย "ID mismatch"</td></tr>
+          <tr><td>ไม่มีลายเซ็น/เซ็นแค่จุดเดียว</td><td>Prompt กำหนดเกณฑ์ lenient — จุดเดียวก็ผ่าน แต่ถ้าว่างจริง ๆ จะถูก reject</td></tr>
+          <tr><td>ชื่อไฟล์ปลายทางซ้ำ</td><td><code>unique_path()</code> เติม (1),(2),... อัตโนมัติ</td></tr>
+          <tr><td>ชื่อผู้กู้มีอักขระต้องห้ามในชื่อไฟล์</td><td><code>sanitize_filename()</code> ลบอักขระอันตรายออก</td></tr>
+          <tr><td>ผู้ใช้กด Stop ระหว่างประมวลผล</td><td><code>stop_flag</code> ทำให้ loop จบแบบนุ่มนวลหลังไฟล์ปัจจุบันเสร็จ</td></tr>
+          <tr><td>ย้ายไฟล์ล้มเหลว (permission/disk error)</td><td>catch exception ใน <code>run()</code> → fallback ไป Manual แทน crash</td></tr>
+          <tr><td>โฟลเดอร์ NewDocs* ไม่มีอยู่จริง</td><td>log <code>[WARN]</code> แล้ว return โดยไม่ error</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 15. Deps -->
+  <div class="card" id="deps">
+    <h2>📦 15. Dependencies และการติดตั้ง</h2>
+    <div class="file-tag">requirements.txt</div>
+    <pre><code>customtkinter==5.2.2       # GUI framework (ห่อ Tkinter)
+google-generativeai==0.8.3 # Gemini API SDK
+pyinstaller==6.11.1        # ใช้ build เป็น .exe/.app แบบ standalone
+python-dotenv==1.0.1       # โหลด GEMINI_API_KEY จากไฟล์ .env
+Pillow==11.0.0             # ประมวลผลภาพ (resize, JPEG encode)</code></pre>
+    <p>ติดตั้งด้วย:</p>
+    <pre><code>pip install -r requirements.txt</code></pre>
+    <p>ตั้งค่า API Key ได้ 2 วิธี:</p>
+    <ul>
+      <li>สร้างไฟล์ <code>.env</code> ในโฟลเดอร์เดียวกับ <code>main.py</code> แล้วใส่ <code>GEMINI_API_KEY=your_key_here</code></li>
+      <li>หรือกรอกผ่านหน้า Settings ในแอป (เก็บไว้ใน session เท่านั้น ไม่บันทึกถาวร)</li>
+    </ul>
+  </div>
+
+  <footer>
+    <p>AI Document Assistant — Technical Reference &copy; 2026</p>
+  </footer>
+
+</div>
+
+</body>
+</html>

@@ -1,4 +1,9 @@
-customtkinter==5.2.2
+pywebview==6.2.1
 google-generativeai==0.8.3
 pyinstaller==6.11.1
 python-dotenv==1.0.1
+Pillow==11.0.0
+# Windows only: EdgeChromium (WebView2) backend for pywebview
+pythonnet==3.0.4; sys_platform == "win32"
+# Legacy customtkinter GUI (main.py) — optional
+customtkinter==5.2.2

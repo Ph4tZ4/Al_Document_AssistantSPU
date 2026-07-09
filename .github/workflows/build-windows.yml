@@ -25,8 +25,10 @@ jobs:
         run: >
           pyinstaller --noconfirm --onefile --windowed
           --name "AI_Document_Assistant"
-          --collect-all customtkinter
-          main.py
+          --add-data "web;web"
+          --add-data "fonts;fonts"
+          --collect-all webview
+          app.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
