@@ -204,9 +204,24 @@
                 <button class="tab" data-filter="success">สำเร็จ</button>
                 <button class="tab" data-filter="manual">ต้องตรวจสอบ</button>
               </div>
-              <div class="search-box">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                <input type="text" id="resultSearch" placeholder="ค้นหาชื่อไฟล์หรือชื่อผู้กู้...">
+              <div class="result-actions">
+                <div class="page-size-group">
+                  <label for="pageSizeSelect" class="size-label">แสดงหน้าละ</label>
+                  <div class="select-wrapper">
+                    <select id="pageSizeSelect" class="size-select">
+                      <option value="10">10 รายการ</option>
+                      <option value="25">25 รายการ</option>
+                      <option value="50">50 รายการ</option>
+                      <option value="80">80 รายการ</option>
+                      <option value="100">100 รายการ</option>
+                    </select>
+                    <svg class="select-arrow" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                  </div>
+                </div>
+                <div class="search-box">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                  <input type="text" id="resultSearch" placeholder="ค้นหาชื่อไฟล์หรือชื่อผู้กู้...">
+                </div>
               </div>
             </div>
             <div class="table-wrap">
@@ -214,6 +229,12 @@
                 <thead><tr><th>#</th><th>ชื่อไฟล์</th><th>ชื่อ-นามสกุล</th><th>เลขบัตรประชาชน</th><th>ลักษณะเงินกู้</th><th>ลายเซ็น</th><th>ค่าเล่าเรียน</th><th>ค่าครองชีพ/เดือน</th><th>จำนวนเดือน</th><th>ค่าครองชีพรวม</th><th>รวมสุทธิ</th><th>ผลการตรวจสอบ</th></tr></thead>
                 <tbody id="resultBody"><tr><td colspan="12" class="empty">ยังไม่มีรายการ กด "เริ่มประมวลผล" เพื่อเริ่มตรวจสอบเอกสาร</td></tr></tbody>
               </table>
+            </div>
+            <div class="pagination-bar" id="resultPagination">
+              <div class="pagination-info" id="paginationInfo">
+                แสดง 0 รายการ
+              </div>
+              <div class="pagination-controls" id="paginationButtons"></div>
             </div>
           </div>
         </section>
@@ -243,7 +264,7 @@
               <input type="password" id="apiKey" placeholder="sk-...">
               <button class="btn ghost" id="testBtn"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg> ทดสอบการเชื่อมต่อ</button>
             </div>
-            <small class="field-hint" id="apiHint">คีย์จะถูกจัดเก็บอย่างปลอดภัยและใช้เพราะการประมวลผลเอกสาร (ขอฟรีได้ที่ aistudio.google.com/apikey)</small>
+            <small class="field-hint" id="apiHint">การทดสอบการเชื่อมต่อจะต้องพิมพ์คำยืนยัน <code>confirm change api</code> ก่อน · ขอคีย์ฟรีได้ที่ aistudio.google.com/apikey</small>
           </div>
 
           <div class="card">
@@ -251,10 +272,14 @@
             <p class="muted">คำสั่งที่ส่งให้ AI ใช้อ่านและดึงข้อมูลจากเอกสาร แก้ไขได้หากต้องการปรับพฤติกรรมการอ่าน</p>
             <label class="field-label">ข้อความพร็อมท์</label>
             <textarea id="promptText" class="prompt-textarea" rows="10" spellcheck="false"></textarea>
-            <div class="input-row" style="margin-top:8px;">
+            <div class="input-row" style="margin-top:10px; justify-content: flex-end;">
               <button class="btn ghost" id="resetPromptBtn" type="button">คืนค่าเริ่มต้น</button>
+              <button class="btn primary" id="savePromptBtn" type="button">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+                บันทึกพร็อมท์
+              </button>
             </div>
-            <small class="field-hint">การเปลี่ยนพร็อมท์จะต้องยืนยันด้วยการพิมพ์คำยืนยันก่อนบันทึก</small>
+            <small class="field-hint">การบันทึกพร็อมท์จะต้องพิมพ์คำยืนยัน <code>confirm change prompt</code> ก่อน</small>
           </div>
 
           <div class="card">

@@ -18,6 +18,8 @@ const state = {
   logs: [],
   filter: 'all',
   search: '',
+  pageSize: 10,
+  currentPage: 1,
   totalFiles: 0,
   processing: false,
   dashboardBase: null,
@@ -157,9 +159,14 @@ function askConfirm(phrase, title, desc) {
     input.focus();
 
     function onInput() { okBtn.disabled = input.value.trim() !== phrase; }
+    function onKeydown(e) {
+      if (e.key === 'Enter' && !okBtn.disabled) { e.preventDefault(); onOk(); }
+      if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+    }
     function cleanup() {
       overlay.hidden = true;
       input.removeEventListener('input', onInput);
+      input.removeEventListener('keydown', onKeydown);
       okBtn.removeEventListener('click', onOk);
       cancelBtn.removeEventListener('click', onCancel);
     }
@@ -167,6 +174,7 @@ function askConfirm(phrase, title, desc) {
     function onCancel() { cleanup(); resolve(false); }
 
     input.addEventListener('input', onInput);
+    input.addEventListener('keydown', onKeydown);
     okBtn.addEventListener('click', onOk);
     cancelBtn.addEventListener('click', onCancel);
   });
@@ -176,12 +184,40 @@ function askConfirm(phrase, title, desc) {
 $('resetPromptBtn').addEventListener('click', async () => {
   const def = await api.call('get_default_prompt');
   $('promptText').value = def || '';
-  toast('คืนค่าพร็อมท์เริ่มต้นแล้ว (ยังไม่บันทึก กด "บันทึกการตั้งค่า" เพื่อยืนยัน)', 'ok');
+  toast('คืนค่าพร็อมท์เริ่มต้นแล้ว (ยังไม่บันทึก กด "บันทึกพร็อมท์" เพื่อยืนยัน)', 'ok');
 });
+
+/* ---------- Save prompt only (with confirm) ---------- */
+$('savePromptBtn').addEventListener('click', async () => {
+  const newPrompt = $('promptText').value;
+  const promptChanged = newPrompt.trim() !== (state.config.prompt || '').trim();
+  if (!promptChanged) { toast('พร็อมท์ยังไม่มีการเปลี่ยนแปลง', ''); return; }
+  const ok = await askConfirm('confirm change prompt', 'ยืนยันการเปลี่ยนพร็อมท์',
+    'คุณกำลังจะเปลี่ยนพร็อมท์ที่ใช้สั่งให้ AI อ่านและดึงข้อมูลจากเอกสาร');
+  if (!ok) { toast('ยกเลิก: ไม่ได้ยืนยันการเปลี่ยนพร็อมท์', 'err'); return; }
+  const cfg = { ...state.config, prompt: newPrompt };
+  await api.call('save_config', cfg);
+  state.config = { ...state.config, prompt: newPrompt };
+  toast('บันทึกพร็อมท์เรียบร้อย ✓', 'ok');
+});
+
+function cleanApiKey(str) {
+  if (!str) return '';
+  // 1. Remove zero-width characters and other hidden spaces
+  let cleaned = str.replace(/[\u200B-\u200D\uFEFF]/g, '');
+  // 2. Trim regular spaces/newlines
+  cleaned = cleaned.trim();
+  // 3. Remove surrounding single or double quotes (e.g. from env copy-paste)
+  cleaned = cleaned.replace(/^['"]|['"]$/g, '');
+  return cleaned.trim();
+}
 
 /* ---------- Settings save / test ---------- */
 $('saveBtn').addEventListener('click', async () => {
-  const newApiKey = $('apiKey').value.trim();
+  const cleanKey = cleanApiKey($('apiKey').value);
+  $('apiKey').value = cleanKey;
+  
+  const newApiKey = cleanKey;
   const newPrompt = $('promptText').value;
   const newSource = $('setSource').value.trim();
   const newOutput = $('setOutput').value.trim();
@@ -211,11 +247,25 @@ $('saveBtn').addEventListener('click', async () => {
 });
 
 $('testBtn').addEventListener('click', async () => {
-  const key = $('apiKey').value.trim();
+  const cleanKey = cleanApiKey($('apiKey').value);
+  $('apiKey').value = cleanKey;
+  
+  const key = cleanKey;
   const hint = $('apiHint');
   if (!key) { hint.textContent = 'กรุณากรอกคีย์ API ก่อน'; hint.className = 'field-hint err'; return; }
+  
+  const keyChanged = key !== (state.config.api_key || '');
+  if (keyChanged) {
+    const confirmed = await askConfirm('confirm change api', 'ยืนยันการทดสอบการเชื่อมต่อ',
+      'กำลังจะทดสอบการเชื่อมต่อด้วยคีย์ API ที่กรอก — กรุณาพิมพ์คำยืนยันเพื่อดำเนินการต่อ');
+    if (!confirmed) { hint.textContent = 'ยกเลิกการทดสอบ'; hint.className = 'field-hint err'; return; }
+  }
+  
   hint.textContent = 'กำลังทดสอบการเชื่อมต่อ...'; hint.className = 'field-hint';
   const res = await api.call('test_connection', key);
+  if (res.ok) {
+    state.config.api_key = key; // อัปเดตเพื่อให้ตรงกับที่ backend บันทึกสำเร็จ
+  }
   hint.textContent = res.message;
   hint.className = 'field-hint ' + (res.ok ? 'ok' : 'err');
 });
@@ -321,15 +371,30 @@ function renderLogs() {
 }
 
 /* ---------- Results table ---------- */
-$('resultSearch').addEventListener('input', (e) => { state.search = e.target.value.toLowerCase(); renderResults(); });
+$('resultSearch').addEventListener('input', (e) => {
+  state.search = e.target.value.toLowerCase();
+  state.currentPage = 1;
+  renderResults();
+});
+
 document.querySelectorAll('.filter-tabs .tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.filter-tabs .tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
     state.filter = tab.dataset.filter;
+    state.currentPage = 1;
     renderResults();
   });
 });
+
+const sizeSelectEl = $('pageSizeSelect');
+if (sizeSelectEl) {
+  sizeSelectEl.addEventListener('change', (e) => {
+    state.pageSize = Number(e.target.value) || 10;
+    state.currentPage = 1;
+    renderResults();
+  });
+}
 
 function renderResults() {
   const body = $('resultBody');
@@ -337,33 +402,116 @@ function renderResults() {
   if (state.filter !== 'all') rows = rows.filter(r => r.status === state.filter);
   if (state.search) rows = rows.filter(r => (r.filename + ' ' + r.name).toLowerCase().includes(state.search));
 
-  $('resultCount').textContent = `แสดง ${rows.length} จาก ${state.results.length} รายการ`;
+  const totalFiltered = rows.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / state.pageSize));
 
-  if (!rows.length) {
+  if (state.currentPage > totalPages) state.currentPage = totalPages;
+  if (state.currentPage < 1) state.currentPage = 1;
+
+  const startIdx = totalFiltered > 0 ? (state.currentPage - 1) * state.pageSize : 0;
+  const endIdx = Math.min(startIdx + state.pageSize, totalFiltered);
+  const pageRows = rows.slice(startIdx, endIdx);
+
+  if (totalFiltered > 0) {
+    $('resultCount').textContent = `แสดง ${startIdx + 1}-${endIdx} จาก ${totalFiltered} รายการ` + (state.results.length !== totalFiltered ? ` (ทั้งหมด ${state.results.length} รายการ)` : '');
+  } else {
+    $('resultCount').textContent = `แสดง 0 จาก ${state.results.length} รายการ`;
+  }
+
+  if (!pageRows.length) {
     body.innerHTML = `<tr><td colspan="12" class="empty">${state.results.length ? 'ไม่พบรายการที่ค้นหา' : 'ยังไม่มีรายการ กด "เริ่มประมวลผล" เพื่อเริ่มตรวจสอบเอกสาร'}</td></tr>`;
+  } else {
+    body.innerHTML = pageRows.map(r => {
+      const status = r.status === 'success'
+        ? '<span class="status-pill success">สำเร็จ</span>'
+        : `<span class="status-pill manual" title="${esc(r.reason || '')}">ต้องตรวจสอบ</span>`;
+      const sign = r.signed ? '<span class="sign-yes">✓ มี</span>' : '<span class="sign-no">✕ ไม่มี</span>';
+      return `<tr>
+        <td>${r.index}</td>
+        <td>${esc(r.filename)}</td>
+        <td>${esc(r.name)}</td>
+        <td>${esc(r.id_card)}</td>
+        <td>${esc(r.loan_type)}</td>
+        <td>${sign}</td>
+        <td class="num-cell">${money(r.tuition_fee)}</td>
+        <td class="num-cell">${money(r.living_allowance_monthly)}</td>
+        <td class="num-cell">${r.living_allowance_months == null ? '-' : esc(r.living_allowance_months)}</td>
+        <td class="num-cell">${money(r.living_allowance_total)}</td>
+        <td class="num-cell">${money(r.net_total)}</td>
+        <td>${status}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  renderPagination(totalFiltered, totalPages, startIdx, endIdx);
+}
+
+function renderPagination(totalFiltered, totalPages, startIdx, endIdx) {
+  const paginationEl = $('resultPagination');
+  const infoEl = $('paginationInfo');
+  const buttonsEl = $('paginationButtons');
+  if (!paginationEl || !infoEl || !buttonsEl) return;
+
+  if (totalFiltered === 0) {
+    infoEl.innerHTML = 'ยังไม่มีรายการที่จะแสดง';
+    buttonsEl.innerHTML = '';
     return;
   }
 
-  body.innerHTML = rows.map(r => {
-    const status = r.status === 'success'
-      ? '<span class="status-pill success">สำเร็จ</span>'
-      : `<span class="status-pill manual" title="${esc(r.reason)}">ต้องตรวจสอบ</span>`;
-    const sign = r.signed ? '<span class="sign-yes">✓ มี</span>' : '<span class="sign-no">✕ ไม่มี</span>';
-    return `<tr>
-      <td>${r.index}</td>
-      <td>${esc(r.filename)}</td>
-      <td>${esc(r.name)}</td>
-      <td>${esc(r.id_card)}</td>
-      <td>${esc(r.loan_type)}</td>
-      <td>${sign}</td>
-      <td class="num-cell">${money(r.tuition_fee)}</td>
-      <td class="num-cell">${money(r.living_allowance_monthly)}</td>
-      <td class="num-cell">${r.living_allowance_months == null ? '-' : esc(r.living_allowance_months)}</td>
-      <td class="num-cell">${money(r.living_allowance_total)}</td>
-      <td class="num-cell">${money(r.net_total)}</td>
-      <td>${status}</td>
-    </tr>`;
-  }).join('');
+  infoEl.innerHTML = `<span class="page-info-highlight">แสดงรายการที่ ${startIdx + 1} - ${endIdx}</span> จากทั้งหมด <b>${totalFiltered.toLocaleString('th-TH')}</b> รายการ <span class="page-total-badge">หน้า ${state.currentPage} / ${totalPages}</span>`;
+
+  let html = '';
+
+  // First & Prev buttons
+  html += `<button class="page-btn" ${state.currentPage === 1 ? 'disabled' : ''} onclick="goToPage(1)" title="หน้าแรก">«</button>`;
+  html += `<button class="page-btn" ${state.currentPage === 1 ? 'disabled' : ''} onclick="goToPage(${state.currentPage - 1})" title="ก่อนหน้า">‹ ก่อนหน้า</button>`;
+
+  // Page numbers with smart ellipsis
+  const pages = getPaginationPages(state.currentPage, totalPages);
+  pages.forEach(p => {
+    if (p === '...') {
+      html += `<span class="page-btn ellipsis">...</span>`;
+    } else {
+      const activeClass = p === state.currentPage ? 'active' : '';
+      html += `<button class="page-btn ${activeClass}" onclick="goToPage(${p})">${p}</button>`;
+    }
+  });
+
+  // Next & Last buttons
+  html += `<button class="page-btn" ${state.currentPage === totalPages ? 'disabled' : ''} onclick="goToPage(${state.currentPage + 1})" title="หน้าถัดไป">ถัดไป ›</button>`;
+  html += `<button class="page-btn" ${state.currentPage === totalPages ? 'disabled' : ''} onclick="goToPage(${totalPages})" title="หน้าสุดท้าย">»</button>`;
+
+  buttonsEl.innerHTML = html;
+}
+
+function goToPage(page) {
+  if (page < 1) return;
+  state.currentPage = page;
+  renderResults();
+}
+window.goToPage = goToPage;
+
+function getPaginationPages(current, total) {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  const pages = [];
+  if (current <= 4) {
+    for (let i = 1; i <= 5; i++) pages.push(i);
+    pages.push('...');
+    pages.push(total);
+  } else if (current >= total - 3) {
+    pages.push(1);
+    pages.push('...');
+    for (let i = total - 4; i <= total; i++) pages.push(i);
+  } else {
+    pages.push(1);
+    pages.push('...');
+    for (let i = current - 1; i <= current + 1; i++) pages.push(i);
+    pages.push('...');
+    pages.push(total);
+  }
+  return pages;
 }
 
 /* Format a numeric amount as Thai baht with thousands separators, or '-' if missing. */
