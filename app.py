@@ -70,6 +70,9 @@ class Api:
     def get_default_prompt(self) -> str:
         return core.default_prompt()
 
+    def get_prompt_versions(self) -> list:
+        return core.load_prompt_versions()
+
     # ---------- Folder picker ----------
 
     def pick_folder(self) -> str:
@@ -154,6 +157,7 @@ class Api:
         self.ticker.start()
 
     def _run(self, source: str, output: str):
+        started_at = datetime.now()
         try:
             summary = self.processor.run(source, output)
         except Exception as e:
@@ -162,17 +166,30 @@ class Api:
                 "step": "เกิดข้อผิดพลาด",
                 "level": "error",
                 "message": f"ระบบหยุดทำงานกะทันหันระหว่างประมวลผล: {e}",
+                "hint": "ผลลัพธ์ของไฟล์ที่ประมวลผลไปแล้วถูกบันทึกไว้เรียบร้อย ส่วนไฟล์ที่เหลือยังอยู่ในโฟลเดอร์ต้นทาง กด \"เริ่มประมวลผล\" อีกครั้งเพื่อประมวลผลต่อ",
             })
-            summary = {"total": 0, "success": 0, "manual": 0, "elapsed": 0, "elapsed_label": "0:00"}
+            # Salvage a partial summary from the processor's counters so the
+            # files that WERE processed before the crash are still recorded.
+            if self.processor:
+                summary = self.processor.summary(status="crashed")
+            else:
+                summary = {"total": 0, "success": 0, "manual": 0, "elapsed": 0,
+                           "elapsed_label": "0:00", "status": "crashed", "remaining": 0, "avg_seconds": 0}
 
+        finished_at = datetime.now()
         if summary.get("total", 0) > 0:
             core.append_history({
-                "date": core.thai_datetime(datetime.now()),
-                "timestamp": datetime.now().isoformat(),
+                "date": core.thai_datetime(started_at),
+                "finished": core.thai_datetime(finished_at),
+                "timestamp": started_at.isoformat(),
+                "finished_timestamp": finished_at.isoformat(),
                 "total": summary["total"],
                 "success": summary["success"],
                 "manual": summary["manual"],
+                "elapsed": summary.get("elapsed", 0),
                 "elapsed_label": summary["elapsed_label"],
+                "status": summary.get("status", "completed"),
+                "remaining": summary.get("remaining", 0),
             })
         self._js("onDone", summary)
 
@@ -180,6 +197,36 @@ class Api:
         if self.processor:
             self.processor.stop_flag.set()
         return {"ok": True}
+
+    def reveal_file_or_folder(self, rel_path: str = "") -> dict:
+        cfg = core.load_config()
+        output = cfg.get("output_dir") or ""
+        if not output:
+            return {"ok": False, "message": "ยังไม่ได้เลือกโฟลเดอร์ปลายทาง"}
+        target = os.path.join(output, rel_path) if rel_path else output
+        if not os.path.exists(target):
+            return {"ok": False, "message": f"ไม่พบพาธ: {target}"}
+        
+        import subprocess
+        try:
+            if os.path.isdir(target):
+                if sys.platform == "darwin":
+                    subprocess.run(["open", target])
+                elif sys.platform.startswith("win"):
+                    os.startfile(target)
+                else:
+                    subprocess.run(["xdg-open", target])
+            else:
+                if sys.platform == "darwin":
+                    subprocess.run(["open", "-R", target])
+                elif sys.platform.startswith("win"):
+                    subprocess.run(["explorer.exe", "/select,", os.path.normpath(target)])
+                else:
+                    parent = os.path.dirname(target)
+                    subprocess.run(["xdg-open", parent])
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "message": str(e)}
 
     # ---------- History & dashboard ----------
 

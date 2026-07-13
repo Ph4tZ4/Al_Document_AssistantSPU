@@ -22,8 +22,12 @@ const state = {
   currentPage: 1,
   totalFiles: 0,
   processing: false,
-  dashboardBase: null,
+  history: null,          // full run history used to build the dashboard
+  dashRange: '7d',        // dashboard time filter: today | 7d | 30d | all
+  dashSelectedBar: null,  // { day, type } selected by clicking an individual chart bar
   sessionCounted: true,
+  elapsedSeconds: 0,
+  promptVersions: [],
 };
 
 function isPageActive(page) {
@@ -57,6 +61,10 @@ function demo(name, args) {
     case 'count_documents': return { folders: 3, documents: 20 };
     case 'get_history': return [];
     case 'get_dashboard': return { total: 0, success: 0, manual: 0, rate: 0, chart: [], recent: [] };
+    case 'get_prompt_versions': return [];
+    case 'reveal_file_or_folder':
+      toast(`[โหมดตัวอย่าง] เปิดพาธ: output_dir/${args[0] || ''}`, 'ok');
+      return { ok: true };
     default: return null;
   }
 }
@@ -143,20 +151,25 @@ $('pickOutput').addEventListener('click', () => pickInto('output_dir'));
 $('setPickSource').addEventListener('click', () => pickInto('source_dir'));
 $('setPickOutput').addEventListener('click', () => pickInto('output_dir'));
 
-/* ---------- Confirm modal (type-to-confirm) ---------- */
+/* ---------- Confirm modal ----------
+   With a phrase -> type-to-confirm (destructive settings changes).
+   Without a phrase (null) -> simple OK/Cancel confirmation dialog. */
 function askConfirm(phrase, title, desc) {
   return new Promise((resolve) => {
     const overlay = $('confirmModal');
     const input = $('confirmInput');
     const okBtn = $('confirmOkBtn');
     const cancelBtn = $('confirmCancelBtn');
+    const simple = !phrase;
     $('confirmTitle').textContent = title;
     $('confirmDesc').textContent = desc;
-    $('confirmPhrase').textContent = phrase;
+    $('confirmPhrase').textContent = phrase || '';
+    $('confirmPhraseRow').hidden = simple;
+    input.hidden = simple;
     input.value = '';
-    okBtn.disabled = true;
+    okBtn.disabled = !simple;
     overlay.hidden = false;
-    input.focus();
+    if (simple) { okBtn.focus(); } else { input.focus(); }
 
     function onInput() { okBtn.disabled = input.value.trim() !== phrase; }
     function onKeydown(e) {
@@ -198,7 +211,8 @@ $('savePromptBtn').addEventListener('click', async () => {
   const cfg = { ...state.config, prompt: newPrompt };
   await api.call('save_config', cfg);
   state.config = { ...state.config, prompt: newPrompt };
-  toast('บันทึกพร็อมท์เรียบร้อย ✓', 'ok');
+  await loadPromptVersions();
+  toast('บันทึกพร็อมท์เรียบร้อย ✓ (บันทึกเป็นเวอร์ชันใหม่แล้ว)', 'ok');
 });
 
 function cleanApiKey(str) {
@@ -239,6 +253,7 @@ $('saveBtn').addEventListener('click', async () => {
   const cfg = { api_key: newApiKey, source_dir: newSource, output_dir: newOutput, prompt: newPrompt };
   await api.call('save_config', cfg);
   state.config = { ...state.config, ...cfg };
+  if (promptChanged) await loadPromptVersions();
   refreshFolderCards();
   await refreshFileCount();
   $('saveStatus').textContent = 'บันทึกแล้ว ✓';
@@ -271,6 +286,12 @@ $('testBtn').addEventListener('click', async () => {
 });
 
 /* ---------- Mini stats (fully realtime, driven by live results) ---------- */
+function avgLabel(seconds, count) {
+  if (!count || !seconds) return '-';
+  const avg = seconds / count;
+  return avg >= 60 ? `${Math.floor(avg / 60)} นาที ${Math.round(avg % 60)} วิ` : `${avg.toFixed(1)} วิ/ไฟล์`;
+}
+
 function updateMiniStats() {
   const ok = state.results.filter(r => r.status === 'success').length;
   const manual = state.results.filter(r => r.status === 'manual').length;
@@ -280,6 +301,7 @@ function updateMiniStats() {
   $('mFiles').textContent = state.totalFiles ? `${remaining} จาก ${state.totalFiles} ไฟล์` : '0 ไฟล์';
   $('mOk').textContent = `${ok} ไฟล์`;
   $('mManual').textContent = `${manual} ไฟล์`;
+  $('mAvg').textContent = avgLabel(state.elapsedSeconds, done);
   $('mProgress').textContent = `${pct}%`;
   $('progressPct').textContent = `${pct}%`;
   $('progressFill').style.width = `${pct}%`;
@@ -290,16 +312,31 @@ function updateMiniStats() {
   }
 }
 
-/* ---------- Processing ---------- */
+/* ---------- Processing (every action asks for confirmation first) ---------- */
 $('startBtn').addEventListener('click', startProcessing);
-$('stopBtn').addEventListener('click', () => api.call('stop_processing'));
-$('resetBtn').addEventListener('click', resetProcessing);
+$('stopBtn').addEventListener('click', async () => {
+  const ok = await askConfirm(null, 'ยืนยันการหยุดประมวลผล',
+    'ระบบจะหยุดหลังจากไฟล์ปัจจุบันเสร็จ ไฟล์ที่ยังไม่ได้ประมวลผลจะคงอยู่ในโฟลเดอร์ต้นทาง และสามารถกด "เริ่มประมวลผล" เพื่อทำต่อได้ภายหลัง');
+  if (!ok) return;
+  api.call('stop_processing');
+  toast('สั่งหยุดการประมวลผลแล้ว จะหยุดหลังจากไฟล์ปัจจุบันเสร็จ', '');
+});
+$('resetBtn').addEventListener('click', async () => {
+  const ok = await askConfirm(null, 'ยืนยันการเริ่มใหม่',
+    'ผลลัพธ์และบันทึกการทำงานบนหน้าจอจะถูกล้างทั้งหมด (ประวัติที่บันทึกไว้แล้วจะไม่หายไป)');
+  if (!ok) return;
+  resetProcessing();
+});
 
 async function startProcessing() {
   if (state.processing) return;
   if (!state.config.api_key) { toast('กรุณาตั้งค่าคีย์ API ก่อน', 'err'); goto('settings'); return; }
   if (!state.config.source_dir || !state.config.output_dir) { toast('กรุณาเลือกโฟลเดอร์ต้นทางและปลายทาง', 'err'); return; }
   if (!hasApi()) { toast('โหมดตัวอย่าง: เชื่อมต่อ Python เพื่อประมวลผลจริง', 'err'); return; }
+
+  const ok = await askConfirm(null, 'ยืนยันการเริ่มประมวลผล',
+    `ระบบจะเริ่มตรวจสอบและจัดเก็บเอกสาร ${state.totalFiles} ไฟล์จากโฟลเดอร์ต้นทาง ไฟล์ที่ผ่านการตรวจจะถูกย้ายไปโฟลเดอร์ปลายทาง`);
+  if (!ok) return;
 
   resetProcessing(true);
   state.processing = true;
@@ -315,10 +352,12 @@ async function startProcessing() {
 function resetProcessing(keepButtons) {
   state.results = [];
   state.logs = [];
+  state.elapsedSeconds = 0;
   renderResults();
   renderLogs();
   updateMiniStats();
   $('mTime').textContent = '0:00';
+  $('mAvg').textContent = '-';
   $('progressLabel').textContent = 'พร้อมเริ่มประมวลผล';
   $('progressPct').textContent = '0%';
   $('progressFill').style.width = '0%';
@@ -339,12 +378,27 @@ window.onResult = function (result) {
   updateMiniStats();
   if (isPageActive('dashboard')) renderDashboardStats();
 };
-window.onTick = function (label) { $('mTime').textContent = label; };
+window.onTick = function (label) {
+  $('mTime').textContent = label;
+  const parts = String(label).split(':');
+  state.elapsedSeconds = (Number(parts[0]) || 0) * 60 + (Number(parts[1]) || 0);
+  const done = state.results.length;
+  $('mAvg').textContent = avgLabel(state.elapsedSeconds, done);
+};
 window.onDone = async function (summary) {
   finishProcessing();
   if (summary && summary.elapsed_label) $('mTime').textContent = summary.elapsed_label;
+  if (summary && summary.elapsed) state.elapsedSeconds = summary.elapsed;
   updateMiniStats();
-  toast(`เสร็จสิ้น: สำเร็จ ${summary.success} • ต้องตรวจสอบ ${summary.manual}`, 'ok');
+  if (summary && summary.status === 'stopped') {
+    $('progressLabel').textContent = `หยุดกลางคัน — เหลืออีก ${summary.remaining} ไฟล์`;
+    toast(`หยุดกลางคัน: ประมวลผลแล้ว ${summary.total} ไฟล์ เหลือ ${summary.remaining} ไฟล์ — กด "เริ่มประมวลผล" เพื่อทำต่อ`, '');
+  } else if (summary && summary.status === 'crashed') {
+    $('progressLabel').textContent = `ระบบขัดข้อง — บันทึกผลที่ทำไปแล้ว ${summary.total} ไฟล์`;
+    toast(`ระบบขัดข้องระหว่างประมวลผล — บันทึกผล ${summary.total} ไฟล์ที่ทำเสร็จไว้แล้ว ไฟล์ที่เหลือประมวลผลต่อได้ทันที`, 'err');
+  } else {
+    toast(`เสร็จสิ้น: สำเร็จ ${summary.success} • ต้องตรวจสอบ ${summary.manual}`, 'ok');
+  }
   await loadDashboardBase();
   state.sessionCounted = true;
   if (isPageActive('dashboard')) renderDashboardStats();
@@ -365,7 +419,7 @@ function renderLogs() {
   el.innerHTML = state.logs.map(l => `<div class="log-item ${esc(l.level || 'info')}">
     <span class="log-time">${esc(l.time || '')}</span>
     <span class="log-step">${esc(l.step || LOG_STEP_LEVEL_LABEL[l.level] || '')}</span>
-    <span class="log-msg">${esc(l.message || '')}</span>
+    <span class="log-msg">${esc(l.message || '')}${l.hint ? `<span class="log-hint">💡 วิธีแก้ไข: ${esc(l.hint)}</span>` : ''}</span>
   </div>`).join('');
   el.scrollTop = el.scrollHeight;
 }
@@ -377,9 +431,9 @@ $('resultSearch').addEventListener('input', (e) => {
   renderResults();
 });
 
-document.querySelectorAll('.filter-tabs .tab').forEach(tab => {
+document.querySelectorAll('.filter-tabs .tab[data-filter]').forEach(tab => {
   tab.addEventListener('click', () => {
-    document.querySelectorAll('.filter-tabs .tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.filter-tabs .tab[data-filter]').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
     state.filter = tab.dataset.filter;
     state.currentPage = 1;
@@ -426,7 +480,7 @@ function renderResults() {
         ? '<span class="status-pill success">สำเร็จ</span>'
         : `<span class="status-pill manual" title="${esc(r.reason || '')}">ต้องตรวจสอบ</span>`;
       const sign = r.signed ? '<span class="sign-yes">✓ มี</span>' : '<span class="sign-no">✕ ไม่มี</span>';
-      return `<tr>
+      return `<tr class="clickable-row" data-relpath="${esc(r.rel_path || '')}" title="คลิกเพื่อเปิด/ตรวจสอบไฟล์ในเครื่อง">
         <td>${r.index}</td>
         <td>${esc(r.filename)}</td>
         <td>${esc(r.name)}</td>
@@ -441,6 +495,17 @@ function renderResults() {
         <td>${status}</td>
       </tr>`;
     }).join('');
+
+    body.querySelectorAll('.clickable-row').forEach(tr => {
+      tr.addEventListener('click', () => {
+        const path = tr.dataset.relpath;
+        if (path) {
+          api.call('reveal_file_or_folder', path).then(res => {
+            if (res && !res.ok) toast(res.message, 'err');
+          });
+        }
+      });
+    });
   }
 
   renderPagination(totalFiltered, totalPages, startIdx, endIdx);
@@ -521,32 +586,131 @@ function money(v) {
 }
 
 /* ---------- Dashboard ---------- */
+const TH_MONTHS_JS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+function dayKeyOf(entry) {
+  // Prefer the machine timestamp; fall back to the Thai date label.
+  if (entry.timestamp) return String(entry.timestamp).slice(0, 10); // YYYY-MM-DD
+  const parts = (entry.date || '').split(' ');
+  return parts.length >= 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : (entry.date || '');
+}
+
+function dayLabelOf(entry) {
+  if (entry.timestamp) {
+    const d = new Date(entry.timestamp);
+    if (!isNaN(d)) return `${String(d.getDate()).padStart(2, '0')} ${TH_MONTHS_JS[d.getMonth()]}`;
+  }
+  const parts = (entry.date || '').split(' ');
+  return parts.length >= 2 ? `${parts[0]} ${parts[1]}` : (entry.date || '');
+}
+
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function rangeStart(range) {
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  if (range === 'today') return d;
+  if (range === '7d') { d.setDate(d.getDate() - 6); return d; }
+  if (range === '30d') { d.setDate(d.getDate() - 29); return d; }
+  return null; // all
+}
+
+function filteredHistory() {
+  const rows = state.history || [];
+  const start = rangeStart(state.dashRange);
+  if (!start) return rows;
+  return rows.filter(r => {
+    if (!r.timestamp) return false;
+    const d = new Date(r.timestamp);
+    return !isNaN(d) && d >= start;
+  });
+}
+
 async function loadDashboardBase() {
-  state.dashboardBase = await api.call('get_dashboard');
+  state.history = await api.call('get_history') || [];
 }
 
 async function loadDashboard() {
-  if (!state.dashboardBase) await loadDashboardBase();
+  if (!state.history) await loadDashboardBase();
   renderDashboardStats();
 }
 
+/* Range filter dropdown select */
+const rangeSelectEl = $('dashRangeSelect');
+if (rangeSelectEl) {
+  rangeSelectEl.value = state.dashRange || '7d';
+  rangeSelectEl.addEventListener('change', (e) => {
+    state.dashRange = e.target.value;
+    state.dashSelectedBar = null; // reset bar selection when the range changes
+    renderDashboardStats();
+  });
+}
+
+$('dashClearSel').addEventListener('click', () => {
+  state.dashSelectedBar = null;
+  renderDashboardStats();
+});
+
 function renderDashboardStats() {
-  const base = state.dashboardBase || { total: 0, success: 0, manual: 0, chart: [], recent: [] };
+  const rows = filteredHistory();
+  // Aggregate runs into one group per calendar day (item 9).
+  const dayMap = new Map();
+  rows.forEach(r => {
+    const key = dayKeyOf(r);
+    if (!dayMap.has(key)) dayMap.set(key, { key, label: dayLabelOf(r), total: 0, success: 0, manual: 0, runs: [] });
+    const g = dayMap.get(key);
+    g.total += r.total || 0;
+    g.success += r.success || 0;
+    g.manual += r.manual || 0;
+    g.runs.push(r);
+  });
+  const days = [...dayMap.values()].sort((a, b) => a.key.localeCompare(b.key));
+  const chartDays = days.slice(-14); // keep the chart readable
+
+  // Drop selection if it fell outside the current range.
+  if (state.dashSelectedBar && !dayMap.has(state.dashSelectedBar.day)) state.dashSelectedBar = null;
+  const selected = state.dashSelectedBar ? dayMap.get(state.dashSelectedBar.day) : null;
+
+  // Stats reflect either the selected bar (item 10) or the whole filtered range.
+  const statRows = selected ? selected.runs : rows;
+  let total = statRows.reduce((s, r) => s + (r.total || 0), 0);
+  let success = statRows.reduce((s, r) => s + (r.success || 0), 0);
+  let manual = statRows.reduce((s, r) => s + (r.manual || 0), 0);
+
+  // Live (in-progress) results count toward "today".
   const liveOk = state.sessionCounted ? 0 : state.results.filter(r => r.status === 'success').length;
   const liveManual = state.sessionCounted ? 0 : state.results.filter(r => r.status === 'manual').length;
-  const total = (base.total || 0) + liveOk + liveManual;
-  const success = (base.success || 0) + liveOk;
-  const manual = (base.manual || 0) + liveManual;
-  const rate = total ? Math.round(success / total * 100) : 0;
+  const liveVisible = (liveOk + liveManual) > 0 && (!state.dashSelectedBar || state.dashSelectedBar.day === todayKey());
+  if (liveVisible) { total += liveOk + liveManual; success += liveOk; manual += liveManual; }
 
+  const rate = total ? Math.round(success / total * 100) : 0;
   $('dashTotal').textContent = total;
   $('dashSuccess').textContent = success;
   $('dashManual').textContent = manual;
   $('dashRate').textContent = `${rate}%`;
-  renderChart(base.chart || []);
 
-  const recent = [...(base.recent || [])];
-  if (state.processing || (!state.sessionCounted && state.results.length)) {
+  // Selection helper UI
+  const clearBtn = $('dashClearSel');
+  if (selected && state.dashSelectedBar) {
+    const isAll = state.dashSelectedBar.type === 'all';
+    clearBtn.hidden = false;
+    $('dashSelLabel').textContent = isAll ? selected.label : `${selected.label} — ${BAR_TYPE_LABELS[state.dashSelectedBar.type]}`;
+    $('chartSub').textContent = isAll
+      ? `กำลังแสดงข้อมูลเฉพาะวันที่ ${selected.label} • คลิกแท่งแต่ละแท่งเพื่อดูเฉพาะประเภท`
+      : `กำลังแสดงข้อมูล "${BAR_TYPE_LABELS[state.dashSelectedBar.type]}" ของวันที่ ${selected.label} • คลิกแท่งเดิมอีกครั้งเพื่อยกเลิก`;
+  } else {
+    clearBtn.hidden = true;
+    $('dashSelLabel').textContent = '';
+    $('chartSub').textContent = 'รวมข้อมูลรายวัน • คลิกที่แท่งกราฟแต่ละแท่งเพื่อดูข้อมูลเฉพาะ';
+  }
+
+  renderChart(chartDays);
+
+  // Recent runs table follows the same selection/filter.
+  const recent = statRows.slice(0, 5).map(r => ({ ...r }));
+  if (liveVisible || state.processing) {
     recent.unshift({
       date: state.processing ? 'กำลังประมวลผล…' : 'รอบล่าสุด',
       total: liveOk + liveManual, success: liveOk, manual: liveManual, live: state.processing,
@@ -555,60 +719,147 @@ function renderDashboardStats() {
   renderRecent(recent.slice(0, 5));
 }
 
-function renderChart(chart) {
+const BAR_TYPE_LABELS = { total: 'ทั้งหมด', success: 'สำเร็จ', manual: 'ต้องตรวจสอบ', all: 'ทั้งชุด' };
+
+function renderChart(days) {
   const el = $('dashChart');
-  if (!chart.length) { el.innerHTML = '<p class="muted" style="margin:auto">ยังไม่มีข้อมูลกราฟ</p>'; return; }
-  const max = Math.max(1, ...chart.map(c => c.total));
-  el.innerHTML = chart.map(c => {
+  if (!days.length) { el.innerHTML = '<p class="muted" style="margin:auto">ยังไม่มีข้อมูลกราฟในช่วงเวลาที่เลือก</p>'; return; }
+  const max = Math.max(1, ...days.map(c => c.total));
+  const curSel = state.dashSelectedBar;
+  el.innerHTML = days.map(c => {
     const th = Math.round(c.total / max * 140);
     const oh = Math.round(c.success / max * 140);
-    return `<div class="bar-group">
+    const mh = Math.round(c.manual / max * 140);
+    const isThisDay = curSel && curSel.day === c.key;
+    const groupCls = curSel ? (isThisDay ? ' has-sel' : ' dim') : '';
+    const bCls = (type) => {
+      if (!curSel) return '';
+      return (isThisDay && (curSel.type === 'all' || curSel.type === type)) ? ' bar-selected' : ' bar-dim';
+    };
+    return `<div class="bar-group clickable${groupCls}">
       <span class="bval">${c.total}</span>
       <div class="bars">
-        <div class="bar ok" style="height:${oh}px"></div>
-        <div class="bar total" style="height:${th}px"></div>
+        <div class="bar total${bCls('total')}" data-day="${esc(c.key)}" data-type="total" style="height:${th}px" title="${esc(c.label)} — ทั้งหมด ${c.total}"></div>
+        <div class="bar ok${bCls('success')}" data-day="${esc(c.key)}" data-type="success" style="height:${oh}px" title="${esc(c.label)} — สำเร็จ ${c.success}"></div>
+        <div class="bar manual${bCls('manual')}" data-day="${esc(c.key)}" data-type="manual" style="height:${mh}px" title="${esc(c.label)} — ต้องตรวจสอบ ${c.manual}"></div>
       </div>
       <span class="blabel">${esc(c.label)}</span>
     </div>`;
   }).join('');
+  el.querySelectorAll('.bar[data-day]').forEach(bar => {
+    bar.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const day = bar.dataset.day;
+      const type = bar.dataset.type;
+      state.dashSelectedBar = (curSel && curSel.day === day && curSel.type === type) ? null : { day, type };
+      renderDashboardStats();
+    });
+  });
+  // Click on the label / value area (outside the bars) selects the entire day
+  el.querySelectorAll('.bar-group.clickable').forEach(g => {
+    g.addEventListener('click', () => {
+      const bar0 = g.querySelector('.bar[data-day]');
+      if (!bar0) return;
+      const day = bar0.dataset.day;
+      state.dashSelectedBar = (curSel && curSel.day === day && curSel.type === 'all') ? null : { day, type: 'all' };
+      renderDashboardStats();
+    });
+  });
+}
+
+function statusPill(r) {
+  if (r.live) return '<span class="status-pill live">● กำลังประมวลผล</span>';
+  if (r.status === 'stopped') return `<span class="status-pill stopped" title="เหลือ ${r.remaining || 0} ไฟล์">หยุดกลางคัน</span>`;
+  if (r.status === 'crashed') return `<span class="status-pill crashed" title="เหลือ ${r.remaining || 0} ไฟล์">ขัดข้อง</span>`;
+  return '<span class="status-pill success">เสร็จสิ้น</span>';
 }
 
 function renderRecent(recent) {
   const body = $('dashRecent');
   if (!recent.length) { body.innerHTML = '<tr><td colspan="5" class="empty">ยังไม่มีข้อมูล</td></tr>'; return; }
-  body.innerHTML = recent.map(r => {
-    const pill = r.live
-      ? '<span class="status-pill live">● กำลังประมวลผล</span>'
-      : '<span class="status-pill success">เสร็จสิ้น</span>';
-    return `<tr>
+  body.innerHTML = recent.map(r => `<tr>
     <td>${esc(r.date)}</td>
     <td>${r.total}</td>
     <td class="num-ok">${r.success}</td>
     <td class="num-manual">${r.manual}</td>
-    <td style="text-align:right">${pill}</td>
-  </tr>`;
-  }).join('');
+    <td style="text-align:right">${statusPill(r)}</td>
+  </tr>`).join('');
 }
 
 /* ---------- History ---------- */
+/* Average processing time per document for a run (item 3). */
+function runAvgLabel(r) {
+  let seconds = r.elapsed;
+  if (seconds == null && r.elapsed_label) {
+    const p = String(r.elapsed_label).split(':');
+    seconds = (Number(p[0]) || 0) * 60 + (Number(p[1]) || 0);
+  }
+  if (!seconds || !r.total) return '-';
+  return avgLabel(seconds, r.total);
+}
+
 async function loadHistory() {
   const rows = await api.call('get_history');
   const body = $('historyBody');
-  if (!rows.length) { body.innerHTML = '<tr><td colspan="5" class="empty">ยังไม่มีประวัติการประมวลผล</td></tr>'; return; }
+  if (!rows.length) { body.innerHTML = '<tr><td colspan="8" class="empty">ยังไม่มีประวัติการประมวลผล</td></tr>'; return; }
   body.innerHTML = rows.map(r => `<tr>
     <td>${esc(r.date)}</td>
+    <td>${esc(r.finished || '-')}</td>
     <td>${r.total}</td>
     <td class="num-ok">${r.success}</td>
     <td class="num-manual">${r.manual}</td>
     <td><span class="time-cell">🕒 ${esc(r.elapsed_label || '-')}</span></td>
+    <td><span class="time-cell">${esc(runAvgLabel(r))}</span></td>
+    <td>${statusPill(r)}</td>
   </tr>`).join('');
 }
+
+/* ---------- Prompt versions (item 8) ---------- */
+async function loadPromptVersions() {
+  state.promptVersions = await api.call('get_prompt_versions') || [];
+  const sel = $('promptVersionSelect');
+  const current = (state.config.prompt || '').trim();
+  sel.innerHTML = '<option value="">เวอร์ชันปัจจุบัน (ที่ใช้งานอยู่)</option>' +
+    state.promptVersions.map(v => {
+      const isCurrent = (v.prompt || '').trim() === current;
+      return `<option value="${v.version}">เวอร์ชัน ${v.version} — ${esc(v.date || '')}${isCurrent ? ' (ใช้งานอยู่)' : ''}</option>`;
+    }).join('');
+}
+
+$('promptVersionSelect').addEventListener('change', (e) => {
+  const val = e.target.value;
+  if (!val) { $('promptText').value = state.config.prompt || ''; return; }
+  const v = state.promptVersions.find(x => String(x.version) === String(val));
+  if (!v) return;
+  $('promptText').value = v.prompt || '';
+  toast(`โหลดพร็อมท์เวอร์ชัน ${v.version} แล้ว — กด "บันทึกพร็อมท์" เพื่อกลับไปใช้เวอร์ชันนี้`, '');
+});
 
 /* ---------- Utils ---------- */
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
+/* ---------- Clickable Cards setup ---------- */
+function initClickableCards() {
+  const dashCard = $('dashManualCard');
+  if (dashCard) {
+    dashCard.addEventListener('click', () => {
+      api.call('reveal_file_or_folder', 'Manual').then(res => {
+        if (res && !res.ok) toast(res.message, 'err');
+      });
+    });
+  }
+  const procCard = $('processManualCard');
+  if (procCard) {
+    procCard.addEventListener('click', () => {
+      api.call('reveal_file_or_folder', 'Manual').then(res => {
+        if (res && !res.ok) toast(res.message, 'err');
+      });
+    });
+  }
+}
+
 /* ---------- Boot ---------- */
-function boot() { loadConfig(); loadDashboardBase(); goto('dashboard'); }
+function boot() { loadConfig().then(loadPromptVersions); loadDashboardBase(); initClickableCards(); goto('dashboard'); }
 if (hasApi()) { boot(); }
 else { window.addEventListener('pywebviewready', boot); setTimeout(() => { if (!window.__booted) { window.__booted = true; boot(); } }, 400); }
 window.addEventListener('pywebviewready', () => { if (!window.__booted) { window.__booted = true; boot(); } });

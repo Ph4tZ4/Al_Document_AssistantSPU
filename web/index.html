@@ -81,6 +81,20 @@
           <h2 class="welcome">ยินดีต้อนรับสู่ระบบผู้ช่วยเอกสาร กยศ.</h2>
           <p class="welcome-sub">ระบบช่วยตรวจสอบและจัดเก็บเอกสารแบบยืนยันการเบิกเงินกู้ยืมอัตโนมัติ ใช้งานง่าย เพียงไม่กี่ขั้นตอน</p>
 
+          <div class="dash-filterbar">
+            <span class="dash-filter-label">ช่วงเวลา:</span>
+            <div class="select-wrapper">
+              <select id="dashRangeSelect" class="size-select">
+                <option value="today">วันนี้</option>
+                <option value="7d" selected>7 วันล่าสุด</option>
+                <option value="30d">30 วันล่าสุด</option>
+                <option value="all">ทั้งหมด</option>
+              </select>
+              <svg class="select-arrow" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+            <button class="btn ghost dash-clear-sel" id="dashClearSel" hidden>✕ ล้างการเลือก: <b id="dashSelLabel"></b></button>
+          </div>
+
           <div class="stat-grid">
             <div class="stat-card">
               <div class="stat-icon indigo"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div>
@@ -90,7 +104,7 @@
               <div class="stat-icon green"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg></div>
               <div class="stat-body"><span>สำเร็จ</span><strong id="dashSuccess">0</strong><small>ผ่านการตรวจสอบและจัดเก็บแล้ว</small></div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card clickable-card" id="dashManualCard" title="คลิกเพื่อเปิดโฟลเดอร์ตรวจสอบด้วยตนเอง (Manual)">
               <div class="stat-icon amber"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div>
               <div class="stat-body"><span>ต้องตรวจสอบ</span><strong id="dashManual">0</strong><small>ส่งเข้าโฟลเดอร์ตรวจสอบด้วยตนเอง</small></div>
             </div>
@@ -103,11 +117,12 @@
           <div class="dash-columns">
             <div class="card chart-card">
               <h3>ปริมาณเอกสารที่ประมวลผล</h3>
-              <p class="muted">ย้อนหลัง 7 วันที่ผ่านมา</p>
+              <p class="muted" id="chartSub">รวมข้อมูลรายวัน • คลิกที่แท่งกราฟเพื่อดูข้อมูลเฉพาะวันนั้น</p>
               <div class="chart" id="dashChart"></div>
               <div class="chart-legend">
-                <span><i class="dot indigo"></i> สำเร็จ</span>
                 <span><i class="dot slate"></i> ทั้งหมด</span>
+                <span><i class="dot green"></i> สำเร็จ</span>
+                <span><i class="dot amber"></i> ต้องตรวจสอบ</span>
               </div>
             </div>
             <div class="card">
@@ -165,9 +180,10 @@
           <div class="mini-stats">
             <div class="mini-card"><span class="mini-icon slate"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span><div><strong id="mFiles">0 ไฟล์</strong><small>ไฟล์คงเหลือ / ทั้งหมด</small></div></div>
             <div class="mini-card"><span class="mini-icon green"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg></span><div><strong id="mOk">0 ไฟล์</strong><small>สำเร็จ</small></div></div>
-            <div class="mini-card"><span class="mini-icon amber"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/></svg></span><div><strong id="mManual">0 ไฟล์</strong><small>ต้องตรวจสอบ</small></div></div>
+            <div class="mini-card clickable-card" id="processManualCard" title="คลิกเพื่อเปิดโฟลเดอร์ตรวจสอบด้วยตนเอง (Manual)"><span class="mini-icon amber"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/></svg></span><div><strong id="mManual">0 ไฟล์</strong><small>ต้องตรวจสอบ</small></div></div>
             <div class="mini-card"><span class="mini-icon indigo"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg></span><div><strong id="mProgress">0%</strong><small>ความคืบหน้า</small></div></div>
             <div class="mini-card"><span class="mini-icon violet"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span><div><strong id="mTime">0:00</strong><small>เวลาที่ใช้</small></div></div>
+            <div class="mini-card"><span class="mini-icon violet"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2h4"/><path d="M12 14v-4"/><circle cx="12" cy="14" r="8"/></svg></span><div><strong id="mAvg">-</strong><small>เวลาเฉลี่ย/ไฟล์</small></div></div>
           </div>
 
           <div class="proc-buttons">
@@ -247,8 +263,8 @@
             </div>
             <div class="table-wrap">
               <table class="data-table">
-                <thead><tr><th>วันที่ - เวลา</th><th>จำนวนเอกสาร</th><th>สำเร็จ</th><th>ต้องตรวจสอบ</th><th>เวลาที่ใช้</th></tr></thead>
-                <tbody id="historyBody"><tr><td colspan="5" class="empty">ยังไม่มีประวัติการประมวลผล</td></tr></tbody>
+                <thead><tr><th>เริ่มเมื่อ</th><th>เสร็จสิ้นเมื่อ</th><th>จำนวนเอกสาร</th><th>สำเร็จ</th><th>ต้องตรวจสอบ</th><th>เวลาที่ใช้</th><th>เฉลี่ย/ไฟล์</th><th>สถานะ</th></tr></thead>
+                <tbody id="historyBody"><tr><td colspan="8" class="empty">ยังไม่มีประวัติการประมวลผล</td></tr></tbody>
               </table>
             </div>
           </div>
@@ -270,6 +286,16 @@
           <div class="card">
             <h3 class="card-title-icon"><span class="ci indigo"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg></span>พร็อมท์สำหรับ AI (Prompt)</h3>
             <p class="muted">คำสั่งที่ส่งให้ AI ใช้อ่านและดึงข้อมูลจากเอกสาร แก้ไขได้หากต้องการปรับพฤติกรรมการอ่าน</p>
+            <label class="field-label">เวอร์ชันพร็อมท์</label>
+            <div class="input-row">
+              <div class="select-wrapper" style="flex:1">
+                <select id="promptVersionSelect" class="size-select" style="width:100%">
+                  <option value="">เวอร์ชันปัจจุบัน (ที่ใช้งานอยู่)</option>
+                </select>
+                <svg class="select-arrow" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              </div>
+            </div>
+            <small class="field-hint">ระบบจะบันทึกทุกเวอร์ชันที่เคยบันทึกไว้อัตโนมัติ — เลือกเวอร์ชันเก่าเพื่อโหลดข้อความมาดู/แก้ไข แล้วกด "บันทึกพร็อมท์" เพื่อกลับไปใช้เวอร์ชันนั้น</small>
             <label class="field-label">ข้อความพร็อมท์</label>
             <textarea id="promptText" class="prompt-textarea" rows="10" spellcheck="false"></textarea>
             <div class="input-row" style="margin-top:10px; justify-content: flex-end;">
@@ -317,7 +343,7 @@
     <div class="modal-box">
       <h3 id="confirmTitle">ยืนยันการเปลี่ยนแปลง</h3>
       <p id="confirmDesc" class="muted"></p>
-      <p class="muted">พิมพ์คำว่า <code id="confirmPhrase"></code> เพื่อยืนยัน</p>
+      <p class="muted" id="confirmPhraseRow">พิมพ์คำว่า <code id="confirmPhrase"></code> เพื่อยืนยัน</p>
       <input type="text" id="confirmInput" class="modal-input" autocomplete="off" spellcheck="false">
       <div class="modal-actions">
         <button class="btn ghost" id="confirmCancelBtn" type="button">ยกเลิก</button>

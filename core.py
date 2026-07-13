@@ -154,6 +154,7 @@ def app_data_dir() -> str:
 
 CONFIG_PATH = os.path.join(app_data_dir(), "config.json")
 HISTORY_PATH = os.path.join(app_data_dir(), "history.json")
+PROMPT_VERSIONS_PATH = os.path.join(app_data_dir(), "prompt_versions.json")
 
 DEFAULT_CONFIG = {
     "api_key": "",
@@ -187,13 +188,72 @@ def load_config() -> dict:
 
 def save_config(cfg: dict) -> dict:
     current = load_config()
+    previous_prompt = current.get("prompt") or ""
     current.update({k: v for k, v in cfg.items() if k in DEFAULT_CONFIG})
     try:
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(current, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
+    # Prompt versioning: keep a history of every prompt that has been used.
+    new_prompt = (cfg.get("prompt") or "").strip() if "prompt" in cfg else ""
+    if new_prompt and new_prompt != previous_prompt.strip():
+        append_prompt_version(new_prompt)
     return current
+
+
+# ---------- Prompt version history ----------
+
+def load_prompt_versions() -> list:
+    """Return prompt versions, newest first. Seeds the file with the current
+    prompt (or built-in default) on first use so there is always a v1."""
+    versions = []
+    try:
+        with open(PROMPT_VERSIONS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                versions = data
+    except Exception:
+        pass
+    if not versions:
+        current = load_config().get("prompt") or GEMINI_PROMPT
+        versions = [_make_prompt_version(1, current)]
+        _write_prompt_versions(versions)
+    return versions
+
+
+def _make_prompt_version(version: int, prompt: str) -> dict:
+    now = datetime.now()
+    return {
+        "version": version,
+        "timestamp": now.isoformat(),
+        "date": thai_datetime(now),
+        "prompt": prompt,
+    }
+
+
+def _write_prompt_versions(versions: list):
+    try:
+        with open(PROMPT_VERSIONS_PATH, "w", encoding="utf-8") as f:
+            json.dump(versions, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def append_prompt_version(prompt: str) -> list:
+    """Save a new prompt version (newest first). Skips exact duplicates of the
+    latest version. Keeps up to 50 versions."""
+    prompt = (prompt or "").strip()
+    if not prompt:
+        return load_prompt_versions()
+    versions = load_prompt_versions()
+    if versions and versions[0].get("prompt", "").strip() == prompt:
+        return versions
+    next_num = max((v.get("version", 0) for v in versions), default=0) + 1
+    versions.insert(0, _make_prompt_version(next_num, prompt))
+    versions = versions[:50]
+    _write_prompt_versions(versions)
+    return versions
 
 
 def load_history() -> list:
@@ -223,6 +283,24 @@ def append_history(entry: dict) -> list:
 # CORE PROCESSING
 # ============================================================
 
+# Actionable fix suggestions shown alongside error/warning logs so staff know
+# how to correct a file that failed processing.
+FIX_HINTS = {
+    "ไม่พบชื่อ-นามสกุล": "ตรวจสอบว่าเอกสารสแกนครบทั้งหน้าและช่องชื่อ-นามสกุลไม่ถูกบัง/เลือน หากเลือนให้สแกนใหม่ด้วยความละเอียดสูงขึ้นแล้วนำเข้าประมวลผลอีกครั้ง",
+    "อ่านเลขบัตร 13 หลักไม่ได้": "สแกนเอกสารใหม่ให้คมชัดขึ้น (300 dpi ขึ้นไป) โดยให้เห็นเลขบัตรใต้บาร์โค้ดและในเนื้อเอกสารครบ 13 หลัก แล้วนำเข้าประมวลผลอีกครั้ง",
+    "เลขบัตรบน/ล่างไม่ตรงกัน": "เปิดไฟล์ในโฟลเดอร์ Manual เพื่อเทียบเลขบัตรทั้งสองจุดด้วยตนเอง หากเอกสารพิมพ์เลขผิดให้แจ้งผู้กู้แก้ไขเอกสารแล้วสแกนใหม่",
+    "เลขบัตรประชาชนไม่ถูกต้อง (หลักตรวจสอบไม่ผ่าน)": "เลขบัตรที่อ่านได้ไม่ผ่านการตรวจสอบหลักสุดท้าย อาจเกิดจากสแกนไม่ชัดหรือกรอกเลขผิด ให้ตรวจเลขบัตรในเอกสารจริงแล้วสแกนใหม่ให้คมชัด",
+    "ไม่พบประเภทการกู้": "ตรวจสอบว่าส่วนหัวเอกสารที่ระบุ \"ลักษณะที่ ...\" ถูกสแกนติดมาครบ ไม่ถูกตัดขอบ หากขาดให้สแกนใหม่ทั้งหน้า",
+    "ไม่พบลายเซ็นผู้กู้": "ให้ผู้กู้ลงลายมือชื่อในช่อง \"ลงชื่อ ... ผู้กู้ยืมเงิน\" ให้เรียบร้อย แล้วสแกนเอกสารและนำเข้าประมวลผลอีกครั้ง",
+    "AI อ่านไฟล์ไม่ได้": "ตรวจสอบว่าไฟล์เปิดได้ปกติและเป็นเอกสารแบบยืนยันการเบิกเงินกู้ หากไฟล์เสียหายให้สแกนใหม่เป็น PDF หรือ JPG แล้วนำเข้าประมวลผลอีกครั้ง",
+}
+
+
+def fix_hint(reason: str) -> str:
+    """Return an actionable suggestion for a known failure reason."""
+    return FIX_HINTS.get(reason, "")
+
+
 class DocumentProcessor:
     def __init__(self, api_key: str, prompt: str | None = None, log_fn=None, result_fn=None):
         genai.configure(api_key=api_key)
@@ -237,15 +315,17 @@ class DocumentProcessor:
 
     # ---------- Logging (structured, user-friendly) ----------
 
-    def _log(self, step: str, message: str, level: str = "info"):
+    def _log(self, step: str, message: str, level: str = "info", hint: str = ""):
         """Emit a structured log entry: timestamp + processing step + a plain,
         non-technical message so office staff can understand what happened.
-        level is one of: info, success, warning, error."""
+        level is one of: info, success, warning, error.
+        hint (optional) is an actionable suggestion on how to fix the problem."""
         self.log({
             "time": thai_datetime(datetime.now(), with_seconds=True),
             "step": step,
             "level": level,
             "message": message,
+            "hint": hint,
         })
 
     # ---------- Folder discovery ----------
@@ -292,7 +372,8 @@ class DocumentProcessor:
                 img.save(buf, format="JPEG", quality=JPEG_QUALITY, optimize=True)
                 return buf.getvalue()
         except Exception as e:
-            self._log("เปิดไฟล์", f"ไม่สามารถเปิดไฟล์รูปภาพ {os.path.basename(image_path)} ได้ ไฟล์อาจเสียหายหรือไม่ใช่ชนิดไฟล์ที่รองรับ", "error")
+            self._log("เปิดไฟล์", f"ไม่สามารถเปิดไฟล์รูปภาพ {os.path.basename(image_path)} ได้ ไฟล์อาจเสียหายหรือไม่ใช่ชนิดไฟล์ที่รองรับ", "error",
+                      hint=f"ลองเปิดไฟล์ด้วยโปรแกรมดูรูปภาพ หากเปิดไม่ได้ให้สแกนเอกสารใหม่และบันทึกเป็นไฟล์ {SUPPORTED_LABEL} ก่อนนำเข้าประมวลผลอีกครั้ง")
             return None
 
     # ---------- AI extraction ----------
@@ -315,10 +396,12 @@ class DocumentProcessor:
             with open(pdf_path, "rb") as f:
                 file_bytes = f.read()
         except Exception as e:
-            self._log("เปิดไฟล์", f"ไม่สามารถเปิดไฟล์ {os.path.basename(pdf_path)} ได้ ไฟล์อาจถูกล็อกหรือเสียหาย", "error")
+            self._log("เปิดไฟล์", f"ไม่สามารถเปิดไฟล์ {os.path.basename(pdf_path)} ได้ ไฟล์อาจถูกล็อกหรือเสียหาย", "error",
+                      hint="ปิดโปรแกรมอื่นที่อาจเปิดไฟล์นี้ค้างอยู่ แล้วลองประมวลผลใหม่ หากยังไม่ได้ให้สแกนเอกสารใหม่แทนไฟล์เดิม")
             return None
         if not file_bytes:
-            self._log("เปิดไฟล์", f"ไฟล์ {os.path.basename(pdf_path)} ไม่มีข้อมูลภายใน (ไฟล์ว่างเปล่า)", "error")
+            self._log("เปิดไฟล์", f"ไฟล์ {os.path.basename(pdf_path)} ไม่มีข้อมูลภายใน (ไฟล์ว่างเปล่า)", "error",
+                      hint="ไฟล์นี้บันทึกมาไม่สมบูรณ์ ให้สแกนเอกสารใหม่แล้วนำไฟล์ใหม่มาแทนที่ก่อนประมวลผลอีกครั้ง")
             return None
         return self._call_ai(file_bytes, "application/pdf")
 
@@ -357,14 +440,17 @@ class DocumentProcessor:
                             self._log("เชื่อมต่อ AI", f"ระบบ AI มีผู้ใช้งานหนาแน่นในขณะนี้ กำลังรอ {wait_time:.0f} วินาทีแล้วลองใหม่อีกครั้ง (ครั้งที่ {attempt + 1}/{max_retries})", "warning")
                             time.sleep(wait_time)
                             continue
-                        self._log("เชื่อมต่อ AI", "เชื่อมต่อระบบ AI ไม่สำเร็จเนื่องจากมีผู้ใช้งานหนาแน่น กรุณาลองประมวลผลไฟล์นี้ใหม่อีกครั้งภายหลัง", "error")
+                        self._log("เชื่อมต่อ AI", "เชื่อมต่อระบบ AI ไม่สำเร็จเนื่องจากมีผู้ใช้งานหนาแน่น กรุณาลองประมวลผลไฟล์นี้ใหม่อีกครั้งภายหลัง", "error",
+                                  hint="รอประมาณ 1-2 นาทีแล้วกด \"เริ่มประมวลผล\" อีกครั้ง ไฟล์ที่ค้างอยู่ในโฟลเดอร์ต้นทางจะถูกประมวลผลต่อโดยอัตโนมัติ")
                         return None
                     raise
         except json.JSONDecodeError:
-            self._log("ตรวจสอบด้วย AI", "ระบบ AI ส่งข้อมูลกลับมาในรูปแบบที่ไม่สามารถอ่านได้ ไฟล์นี้จะถูกส่งไปตรวจสอบด้วยตนเอง", "error")
+            self._log("ตรวจสอบด้วย AI", "ระบบ AI ส่งข้อมูลกลับมาในรูปแบบที่ไม่สามารถอ่านได้ ไฟล์นี้จะถูกส่งไปตรวจสอบด้วยตนเอง", "error",
+                      hint="ลองประมวลผลไฟล์นี้ใหม่อีกครั้ง หากยังไม่ได้ให้สแกนเอกสารใหม่ให้คมชัดขึ้นก่อนนำเข้าระบบ")
             return None
         except Exception as e:
-            self._log("เชื่อมต่อ AI", f"เกิดข้อผิดพลาดขณะเชื่อมต่อระบบ AI: {str(e)[:150]}", "error")
+            self._log("เชื่อมต่อ AI", f"เกิดข้อผิดพลาดขณะเชื่อมต่อระบบ AI: {str(e)[:150]}", "error",
+                      hint="ตรวจสอบการเชื่อมต่ออินเทอร์เน็ตและคีย์ API ในหน้าตั้งค่า จากนั้นกด \"เริ่มประมวลผล\" ใหม่อีกครั้ง")
             return None
 
     # ---------- Validation ----------
@@ -426,12 +512,14 @@ class DocumentProcessor:
             i += 1
         return f"{base} ({i}){ext}"
 
-    def move_to_manual(self, pdf_path: str, output_dir: str, reason: str):
+    def move_to_manual(self, pdf_path: str, output_dir: str, reason: str) -> str:
         manual_dir = os.path.join(output_dir, MANUAL_FOLDER_NAME)
         os.makedirs(manual_dir, exist_ok=True)
         dest = self.unique_path(os.path.join(manual_dir, os.path.basename(pdf_path)))
         shutil.move(pdf_path, dest)
-        self._log("จัดเก็บไฟล์", f"ย้ายไฟล์ {os.path.basename(pdf_path)} ไปที่โฟลเดอร์ตรวจสอบด้วยตนเอง (Manual) เนื่องจาก: {reason}", "warning")
+        self._log("จัดเก็บไฟล์", f"ย้ายไฟล์ {os.path.basename(pdf_path)} ไปที่โฟลเดอร์ตรวจสอบด้วยตนเอง (Manual) เนื่องจาก: {reason}", "warning",
+                  hint=fix_hint(reason))
+        return os.path.basename(dest)
 
     def move_to_loan_folder(self, pdf_path: str, output_dir: str, data: dict) -> str:
         id_card = str(data.get("id_card_top") or data.get("id_card") or data.get("id_card_body"))
@@ -452,12 +540,16 @@ class DocumentProcessor:
         """Process every document. Emits per-file results through result_fn and
         returns a summary dict. Safe against being stopped mid-run."""
         started = time.time()
+        self.started_at = started
+        self.total_ok = 0
+        self.total_manual = 0
         self._log("เริ่มต้น", "เริ่มต้นค้นหาโฟลเดอร์เอกสารที่ต้องประมวลผล")
         folders = self.find_newdocs_folders(source_dir)
         if not folders:
-            self._log("ค้นหาไฟล์", f"ไม่พบโฟลเดอร์เอกสารใหม่ (ชื่อขึ้นต้นด้วย '{PROCESSED_FOLDER_PREFIX}') ในโฟลเดอร์ต้นทางที่เลือกไว้", "error")
+            self._log("ค้นหาไฟล์", f"ไม่พบโฟลเดอร์เอกสารใหม่ (ชื่อขึ้นต้นด้วย '{PROCESSED_FOLDER_PREFIX}') ในโฟลเดอร์ต้นทางที่เลือกไว้", "error",
+                      hint=f"สร้างโฟลเดอร์ชื่อขึ้นต้นด้วย '{PROCESSED_FOLDER_PREFIX}' ในโฟลเดอร์ต้นทาง แล้วนำไฟล์เอกสารไปวางไว้ในนั้นก่อนเริ่มประมวลผล")
 
-        total_ok = total_manual = 0
+        self.planned_total = sum(len(self.find_pdfs(f)) for f in folders)
         index = 0
         for folder in folders:
             if self.stop_flag.is_set():
@@ -475,38 +567,62 @@ class DocumentProcessor:
                 data = self.extract_data(pdf_path)
 
                 if data is None:
-                    self.move_to_manual(pdf_path, output_dir, "AI อ่านไฟล์ไม่ได้")
-                    total_manual += 1
-                    self.emit_result(self._result(index, filename, None, "manual", "AI อ่านไฟล์ไม่ได้"))
+                    dest_name = self.move_to_manual(pdf_path, output_dir, "AI อ่านไฟล์ไม่ได้")
+                    self.total_manual += 1
+                    self.emit_result(self._result(index, filename, None, "manual", "AI อ่านไฟล์ไม่ได้", rel_path=f"Manual/{dest_name}"))
                     continue
 
                 error = self.validate(data)
                 if error:
-                    self._log("ตรวจสอบความถูกต้อง", f"ไฟล์ {filename} ข้อมูลไม่ผ่านเกณฑ์: {error}", "warning")
-                    self.move_to_manual(pdf_path, output_dir, error)
-                    total_manual += 1
-                    self.emit_result(self._result(index, filename, data, "manual", error))
+                    self._log("ตรวจสอบความถูกต้อง", f"ไฟล์ {filename} ข้อมูลไม่ผ่านเกณฑ์: {error}", "warning", hint=fix_hint(error))
+                    dest_name = self.move_to_manual(pdf_path, output_dir, error)
+                    self.total_manual += 1
+                    self.emit_result(self._result(index, filename, data, "manual", error, rel_path=f"Manual/{dest_name}"))
                     continue
 
                 try:
                     self._log("ตรวจสอบความถูกต้อง", f"ไฟล์ {filename} ผ่านการตรวจสอบครบทุกเงื่อนไข", "success")
-                    self.move_to_loan_folder(pdf_path, output_dir, data)
-                    total_ok += 1
-                    self.emit_result(self._result(index, filename, data, "success", ""))
+                    dest_name = self.move_to_loan_folder(pdf_path, output_dir, data)
+                    self.total_ok += 1
+                    loan_folder = LOAN_TYPE_FOLDERS[data["loan_type"]]
+                    self.emit_result(self._result(index, filename, data, "success", "", rel_path=f"{loan_folder}/{dest_name}"))
                 except Exception as e:
-                    self._log("จัดเก็บไฟล์", f"ไม่สามารถย้ายไฟล์ {filename} ได้: {e}", "error")
-                    self.move_to_manual(pdf_path, output_dir, f"move error: {e}")
-                    total_manual += 1
-                    self.emit_result(self._result(index, filename, data, "manual", f"ย้ายไฟล์ไม่สำเร็จ: {e}"))
+                    self._log("จัดเก็บไฟล์", f"ไม่สามารถย้ายไฟล์ {filename} ได้: {e}", "error",
+                              hint="ตรวจสอบว่าโฟลเดอร์ปลายทางยังอยู่ ไม่ถูกลบหรือเปลี่ยนชื่อ มีพื้นที่ว่างเพียงพอ และมีสิทธิ์เขียนไฟล์ จากนั้นลองประมวลผลใหม่")
+                    dest_name = self.move_to_manual(pdf_path, output_dir, f"move error: {e}")
+                    self.total_manual += 1
+                    self.emit_result(self._result(index, filename, data, "manual", f"ย้ายไฟล์ไม่สำเร็จ: {e}", rel_path=f"Manual/{dest_name}"))
 
         elapsed = int(time.time() - started)
-        self._log("เสร็จสิ้น", f"ประมวลผลเสร็จสิ้นทั้งหมด — สำเร็จ {total_ok} ไฟล์ ต้องตรวจสอบเพิ่มเติม {total_manual} ไฟล์ ใช้เวลารวม {elapsed // 60} นาที {elapsed % 60} วินาที", "success")
+        done = self.total_ok + self.total_manual
+        stopped = self.stop_flag.is_set()
+        remaining = max(0, self.planned_total - done)
+        if stopped and remaining:
+            self._log("หยุดการทำงาน",
+                      f"หยุดการประมวลผลกลางคัน — ประมวลผลไปแล้ว {done} จาก {self.planned_total} ไฟล์ เหลืออีก {remaining} ไฟล์",
+                      "warning",
+                      hint="ไฟล์ที่ยังไม่ได้ประมวลผลยังอยู่ในโฟลเดอร์ต้นทาง กด \"เริ่มประมวลผล\" อีกครั้งเพื่อประมวลผลไฟล์ที่เหลือต่อได้ทันที")
+        else:
+            avg = round(elapsed / done, 1) if done else 0
+            self._log("เสร็จสิ้น", f"ประมวลผลเสร็จสิ้นทั้งหมด — สำเร็จ {self.total_ok} ไฟล์ ต้องตรวจสอบเพิ่มเติม {self.total_manual} ไฟล์ ใช้เวลารวม {elapsed // 60} นาที {elapsed % 60} วินาที (เฉลี่ย {avg} วินาที/ไฟล์)", "success")
+        return self.summary(status="stopped" if (stopped and remaining) else "completed")
+
+    def summary(self, status: str = "completed") -> dict:
+        """Build a summary from the current counters. Also used to salvage a
+        partial summary when the run crashes mid-way."""
+        elapsed = int(time.time() - getattr(self, "started_at", time.time()))
+        done = getattr(self, "total_ok", 0) + getattr(self, "total_manual", 0)
+        planned = getattr(self, "planned_total", done)
         return {
-            "total": total_ok + total_manual,
-            "success": total_ok,
-            "manual": total_manual,
+            "total": done,
+            "success": getattr(self, "total_ok", 0),
+            "manual": getattr(self, "total_manual", 0),
+            "planned": planned,
+            "remaining": max(0, planned - done),
+            "status": status,
             "elapsed": elapsed,
             "elapsed_label": f"{elapsed // 60}:{elapsed % 60:02d}",
+            "avg_seconds": round(elapsed / done, 1) if done else 0,
         }
 
     @staticmethod
@@ -527,7 +643,7 @@ class DocumentProcessor:
         return int(num) if num.is_integer() else num
 
     @classmethod
-    def _result(cls, index: int, filename: str, data: dict | None, status: str, reason: str) -> dict:
+    def _result(cls, index: int, filename: str, data: dict | None, status: str, reason: str, rel_path: str = "") -> dict:
         data = data or {}
         return {
             "index": index,
@@ -543,4 +659,5 @@ class DocumentProcessor:
             "net_total": cls._to_number(data.get("net_total")),
             "status": status,
             "reason": reason,
+            "rel_path": rel_path,
         }
