@@ -122,6 +122,44 @@ $env:GEMINI_API_KEY="รหัส-api-key-ของคุณ"
 
 ---
 
-## 📌 ข้อควรทราบเพิ่มเติมสำหรับผู้ดูแลระบบ
+## �️ วิธีสร้างตัวติดตั้ง (Installer) แบบคลิกเดียวจบ พร้อมตัวถอนการติดตั้ง
+
+โปรเจกต์นี้เตรียมไฟล์สำหรับสร้าง **ตัวติดตั้ง (Installer)** ที่มี **ตัวถอนการติดตั้ง (Uninstaller)** ในตัวไว้ให้แล้ว ทั้ง Windows และ macOS
+
+### Windows — `AI_Document_Assistant_Setup.exe`
+
+ใช้เครื่องมือ [Inno Setup](https://jrsoftware.org/isinfo.php) (ฟรี) สร้างไฟล์ Setup.exe ที่:
+- ติดตั้งโปรแกรมลง `Program Files`, สร้างช็อตคัตที่ Start Menu และ Desktop
+- ลงทะเบียนตัวถอนการติดตั้งอัตโนมัติที่ **Settings > Apps > Installed apps** (Control Panel) — เจ้าหน้าที่กด Uninstall ได้เลยโดยไม่ต้องลบมือ
+
+วิธีสร้าง (ต้องรันบนเครื่อง Windows หรือผ่าน GitHub Actions):
+
+1. สร้างไฟล์ `.exe` ตัวโปรแกรมก่อน (ดูวิธีที่ 1 ด้านบน) ให้ได้ `dist\AI_Document_Assistant.exe`
+2. ติดตั้ง [Inno Setup 6](https://jrsoftware.org/isdl.php)
+3. รันคำสั่ง:
+   ```bat
+   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\windows\setup.iss
+   ```
+4. ได้ไฟล์ `dist_installer\AI_Document_Assistant_Setup.exe` — แจกให้เจ้าหน้าที่ดับเบิลคลิกเพื่อติดตั้งได้ทันที
+
+หรือใช้ GitHub Actions อัตโนมัติ: ไปที่แท็บ **Actions > Build Windows EXE > Run workflow** ระบบจะสร้างทั้งไฟล์ `.exe` ธรรมดา และไฟล์ตัวติดตั้ง `AI_Document_Assistant_Windows_Installer` ให้ดาวน์โหลด
+
+### macOS — `AI_Document_Assistant_macOS.dmg`
+
+สคริปต์ `installer/mac/build_dmg.sh` จะสร้างแอป `.app` ด้วย PyInstaller แล้วบรรจุลงไฟล์ `.dmg` ที่มี:
+- ไอคอนแอป + ช็อตคัตลาก (drag) ไปยังโฟลเดอร์ Applications เพื่อ "ติดตั้ง"
+- สคริปต์ `Uninstall AI Document Assistant.command` สำหรับถอนการติดตั้ง (ดับเบิลคลิกเพื่อลบแอปและข้อมูลที่บันทึกไว้)
+
+วิธีสร้าง (ต้องรันบนเครื่อง macOS):
+```bash
+bash installer/mac/build_dmg.sh
+```
+ได้ไฟล์ `dist_installer/AI_Document_Assistant_macOS.dmg`
+
+หรือใช้ GitHub Actions: ไปที่แท็บ **Actions > Build macOS DMG > Run workflow**
+
+---
+
+## �📌 ข้อควรทราบเพิ่มเติมสำหรับผู้ดูแลระบบ
 - เครื่องคอมพิวเตอร์ Windows ของเจ้าหน้าที่ที่จะใช้งานโปรแกรมนี้ **ต้องเชื่อมต่ออินเทอร์เน็ต** เพื่อส่งเอกสารไปวิเคราะห์ที่ Google Gemini API
 - โปรแกรมถูกออกแบบมาเรื่องความปลอดภัย โดยไม่ฝังรหัส API Key ไว้ในโค้ด เจ้าหน้าที่สามารถกรอกเองหน้าโปรแกรม หรือผู้ดูแลระบบตั้งค่าผ่าน Environment Variable ในเครื่องของเจ้าหน้าที่ได้
