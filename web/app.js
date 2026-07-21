@@ -13,7 +13,7 @@ const PAGE_META = {
 };
 
 const state = {
-  config: { api_key: '', source_dir: '', output_dir: '', theme: 'light', prompt: '' },
+  config: { api_key: '', source_dir: '', output_dir: '', prompt: '', font_scale: 1.0 },
   results: [],
   logs: [],
   filter: 'all',
@@ -89,15 +89,39 @@ $('toggleSidebar').addEventListener('click', () => {
   document.querySelector('.app').classList.toggle('collapsed');
 });
 
-/* ---------- Theme ---------- */
-function applyTheme(theme) {
-  document.body.dataset.theme = theme;
-  state.config.theme = theme;
+/* ---------- Font Scale ---------- */
+const FONT_SCALE_LEVELS = [0.85, 1.0, 1.15, 1.30];
+
+function applyFontScale(scale) {
+  scale = parseFloat(scale) || 1.0;
+  if (!FONT_SCALE_LEVELS.includes(scale)) {
+    scale = FONT_SCALE_LEVELS.reduce((prev, curr) => 
+      Math.abs(curr - scale) < Math.abs(prev - scale) ? curr : prev
+    );
+  }
+  document.documentElement.style.setProperty('--font-scale', scale);
+  state.config.font_scale = scale;
+
+  const labelEl = $('fontScaleLabel');
+  if (labelEl) {
+    labelEl.textContent = `${Math.round(scale * 100)}%`;
+  }
 }
-$('themeToggle').addEventListener('click', () => {
-  applyTheme(document.body.dataset.theme === 'dark' ? 'light' : 'dark');
-  api.call('save_config', { theme: state.config.theme });
-});
+
+function stepFontScale(direction) {
+  const current = FONT_SCALE_LEVELS.includes(state.config.font_scale) ? state.config.font_scale : 1.0;
+  const idx = FONT_SCALE_LEVELS.indexOf(current);
+  const nextIdx = Math.min(FONT_SCALE_LEVELS.length - 1, Math.max(0, idx + direction));
+  const nextScale = FONT_SCALE_LEVELS[nextIdx];
+  applyFontScale(nextScale);
+  api.call('save_config', { font_scale: nextScale });
+  toast(`ปรับขนาดตัวอักษรเป็น ${Math.round(nextScale * 100)}%`, 'ok');
+}
+
+const fontDecreaseBtn = $('fontDecreaseBtn');
+if (fontDecreaseBtn) fontDecreaseBtn.addEventListener('click', () => stepFontScale(-1));
+const fontIncreaseBtn = $('fontIncreaseBtn');
+if (fontIncreaseBtn) fontIncreaseBtn.addEventListener('click', () => stepFontScale(1));
 
 /* ---------- Toast ---------- */
 let toastTimer;
@@ -113,7 +137,7 @@ function toast(msg, type = '') {
 async function loadConfig() {
   const cfg = await api.call('get_config');
   state.config = { ...state.config, ...cfg };
-  applyTheme(state.config.theme || 'light');
+  applyFontScale(state.config.font_scale || 1.0);
   $('apiKey').value = state.config.api_key || '';
   $('setSource').value = state.config.source_dir || '';
   $('setOutput').value = state.config.output_dir || '';
@@ -822,17 +846,17 @@ async function loadPromptVersions() {
   sel.innerHTML = '<option value="">เวอร์ชันปัจจุบัน (ที่ใช้งานอยู่)</option>' +
     state.promptVersions.map(v => {
       const isCurrent = (v.prompt || '').trim() === current;
-      return `<option value="${v.version}">เวอร์ชัน ${v.version} — ${esc(v.date || '')}${isCurrent ? ' (ใช้งานอยู่)' : ''}</option>`;
+      return `<option value="${esc(v.filename)}">${esc(v.filename)}${isCurrent ? ' (ใช้งานอยู่)' : ''}</option>`;
     }).join('');
 }
 
 $('promptVersionSelect').addEventListener('change', (e) => {
   const val = e.target.value;
   if (!val) { $('promptText').value = state.config.prompt || ''; return; }
-  const v = state.promptVersions.find(x => String(x.version) === String(val));
+  const v = state.promptVersions.find(x => x.filename === val);
   if (!v) return;
   $('promptText').value = v.prompt || '';
-  toast(`โหลดพร็อมท์เวอร์ชัน ${v.version} แล้ว — กด "บันทึกพร็อมท์" เพื่อกลับไปใช้เวอร์ชันนี้`, '');
+  toast(`โหลดพร็อมท์จากไฟล์ ${v.filename} แล้ว — กด "บันทึกพร็อมท์" เพื่อกลับไปใช้เวอร์ชันนี้`, '');
 });
 
 /* ---------- Utils ---------- */

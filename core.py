@@ -154,14 +154,31 @@ def app_data_dir() -> str:
 
 CONFIG_PATH = os.path.join(app_data_dir(), "config.json")
 HISTORY_PATH = os.path.join(app_data_dir(), "history.json")
-PROMPT_VERSIONS_PATH = os.path.join(app_data_dir(), "prompt_versions.json")
+PROMPT_VERSIONS_DIR = os.path.join(app_data_dir(), "prompt_versions")
+
+
+def _atomic_write_json(path: str, data) -> None:
+    """Write JSON to disk without ever leaving a half-written/corrupted file
+    behind if the process is interrupted (power loss, crash, disk full mid
+    write). Writes to a temporary file in the same directory first, flushes
+    it to the OS, then atomically renames it over the real file. os.replace
+    is atomic on both POSIX and Windows, so the target file is either the
+    old complete version or the new complete version - never a partial one."""
+    directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    tmp_path = f"{path}.tmp{os.getpid()}"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, path)
 
 DEFAULT_CONFIG = {
     "api_key": "",
     "source_dir": "",
     "output_dir": "",
-    "theme": "light",
     "prompt": "",
+    "font_scale": 1.0,
 }
 
 
@@ -191,8 +208,7 @@ def save_config(cfg: dict) -> dict:
     previous_prompt = current.get("prompt") or ""
     current.update({k: v for k, v in cfg.items() if k in DEFAULT_CONFIG})
     try:
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(current, f, ensure_ascii=False, indent=2)
+        _atomic_write_json(CONFIG_PATH, current)
     except Exception:
         pass
     # Prompt versioning: keep a history of every prompt that has been used.
@@ -203,57 +219,74 @@ def save_config(cfg: dict) -> dict:
 
 
 # ---------- Prompt version history ----------
+# Each prompt version is stored as its own JSON file named
+# ปี(ค.ศ.)-เดือน-วัน-เวลา-นาที.json (e.g. 2026-07-16-21-51.json), so the
+# settings UI can display the version list directly by filename.
+
+def _prompt_version_filename(dt: datetime) -> str:
+    return f"{dt.year:04d}-{dt.month:02d}-{dt.day:02d}-{dt.hour:02d}-{dt.minute:02d}.json"
+
+
+def _write_prompt_version_file(dt: datetime, prompt: str):
+    try:
+        os.makedirs(PROMPT_VERSIONS_DIR, exist_ok=True)
+        fname = _prompt_version_filename(dt)
+        _atomic_write_json(os.path.join(PROMPT_VERSIONS_DIR, fname), {"timestamp": dt.isoformat(), "prompt": prompt})
+    except Exception:
+        pass
+
 
 def load_prompt_versions() -> list:
-    """Return prompt versions, newest first. Seeds the file with the current
-    prompt (or built-in default) on first use so there is always a v1."""
+    """Return prompt versions, newest first, one entry per saved JSON file.
+    Seeds the folder with the current prompt (or built-in default) on first
+    use so there is always at least one version."""
     versions = []
     try:
-        with open(PROMPT_VERSIONS_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, list):
-                versions = data
+        os.makedirs(PROMPT_VERSIONS_DIR, exist_ok=True)
+        files = sorted(
+            (f for f in os.listdir(PROMPT_VERSIONS_DIR) if f.endswith(".json")),
+            reverse=True,
+        )
+        for fname in files:
+            try:
+                with open(os.path.join(PROMPT_VERSIONS_DIR, fname), "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                versions.append({
+                    "filename": fname,
+                    "timestamp": data.get("timestamp", ""),
+                    "prompt": data.get("prompt", ""),
+                })
+            except Exception:
+                continue
     except Exception:
         pass
     if not versions:
         current = load_config().get("prompt") or GEMINI_PROMPT
-        versions = [_make_prompt_version(1, current)]
-        _write_prompt_versions(versions)
+        _write_prompt_version_file(datetime.now(), current)
+        return load_prompt_versions()
     return versions
 
 
-def _make_prompt_version(version: int, prompt: str) -> dict:
-    now = datetime.now()
-    return {
-        "version": version,
-        "timestamp": now.isoformat(),
-        "date": thai_datetime(now),
-        "prompt": prompt,
-    }
-
-
-def _write_prompt_versions(versions: list):
-    try:
-        with open(PROMPT_VERSIONS_PATH, "w", encoding="utf-8") as f:
-            json.dump(versions, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
-
-
 def append_prompt_version(prompt: str) -> list:
-    """Save a new prompt version (newest first). Skips exact duplicates of the
-    latest version. Keeps up to 50 versions."""
+    """Save a new prompt version file. Skips exact duplicates of the latest
+    version. Keeps up to 50 versions."""
     prompt = (prompt or "").strip()
     if not prompt:
         return load_prompt_versions()
     versions = load_prompt_versions()
     if versions and versions[0].get("prompt", "").strip() == prompt:
         return versions
-    next_num = max((v.get("version", 0) for v in versions), default=0) + 1
-    versions.insert(0, _make_prompt_version(next_num, prompt))
-    versions = versions[:50]
-    _write_prompt_versions(versions)
-    return versions
+    _write_prompt_version_file(datetime.now(), prompt)
+    try:
+        files = sorted(
+            (f for f in os.listdir(PROMPT_VERSIONS_DIR) if f.endswith(".json")),
+            reverse=True,
+        )
+        for old in files[50:]:
+            os.remove(os.path.join(PROMPT_VERSIONS_DIR, old))
+    except Exception:
+        pass
+    return load_prompt_versions()
 
 
 def load_history() -> list:
@@ -272,8 +305,7 @@ def append_history(entry: dict) -> list:
     history.insert(0, entry)
     history = history[:200]  # keep the latest 200 runs
     try:
-        with open(HISTORY_PATH, "w", encoding="utf-8") as f:
-            json.dump(history, f, ensure_ascii=False, indent=2)
+        _atomic_write_json(HISTORY_PATH, history)
     except Exception:
         pass
     return history
@@ -512,11 +544,39 @@ class DocumentProcessor:
             i += 1
         return f"{base} ({i}){ext}"
 
+    @staticmethod
+    def _safe_move(src: str, dest: str) -> None:
+        """Move a file so an interruption (power loss, disk full) mid-copy can
+        never leave a half-written file under the final destination name.
+
+        shutil.move() alone is only atomic when src and dest are on the same
+        filesystem (it uses os.rename there). When they are on different
+        filesystems/drives it falls back to copy+delete, and a crash during
+        that copy can leave a truncated file already using the final name -
+        which would look like a finished, valid result.
+
+        Here we always copy to a temporary '<dest>.part' file first, fsync
+        it, then atomically rename it to the real destination (os.replace is
+        atomic on the same directory/filesystem), and only remove the
+        source once the destination is confirmed complete. If interrupted,
+        at worst a stray '.part' file is left behind and the original file
+        is still safely sitting in the source folder to be retried."""
+        tmp_dest = dest + ".part"
+        if os.path.exists(tmp_dest):
+            os.remove(tmp_dest)
+        with open(src, "rb") as fsrc, open(tmp_dest, "wb") as fdst:
+            shutil.copyfileobj(fsrc, fdst)
+            fdst.flush()
+            os.fsync(fdst.fileno())
+        shutil.copystat(src, tmp_dest)
+        os.replace(tmp_dest, dest)
+        os.remove(src)
+
     def move_to_manual(self, pdf_path: str, output_dir: str, reason: str) -> str:
         manual_dir = os.path.join(output_dir, MANUAL_FOLDER_NAME)
         os.makedirs(manual_dir, exist_ok=True)
         dest = self.unique_path(os.path.join(manual_dir, os.path.basename(pdf_path)))
-        shutil.move(pdf_path, dest)
+        self._safe_move(pdf_path, dest)
         self._log("จัดเก็บไฟล์", f"ย้ายไฟล์ {os.path.basename(pdf_path)} ไปที่โฟลเดอร์ตรวจสอบด้วยตนเอง (Manual) เนื่องจาก: {reason}", "warning",
                   hint=fix_hint(reason))
         return os.path.basename(dest)
@@ -530,7 +590,7 @@ class DocumentProcessor:
         ext = os.path.splitext(pdf_path)[1].lower() or ".pdf"
         new_name = f"{id_card}{ext}"
         dest = self.unique_path(os.path.join(dest_dir, new_name))
-        shutil.move(pdf_path, dest)
+        self._safe_move(pdf_path, dest)
         self._log("จัดเก็บไฟล์", f"จัดเก็บไฟล์เรียบร้อยที่โฟลเดอร์ {folder_name} ด้วยชื่อไฟล์ {os.path.basename(dest)}", "success")
         return os.path.basename(dest)
 
@@ -567,7 +627,13 @@ class DocumentProcessor:
                 data = self.extract_data(pdf_path)
 
                 if data is None:
-                    dest_name = self.move_to_manual(pdf_path, output_dir, "AI อ่านไฟล์ไม่ได้")
+                    try:
+                        dest_name = self.move_to_manual(pdf_path, output_dir, "AI อ่านไฟล์ไม่ได้")
+                    except Exception as e:
+                        self._log("จัดเก็บไฟล์", f"ไม่สามารถย้ายไฟล์ {filename} ไปที่โฟลเดอร์ Manual ได้: {e}", "error",
+                                  hint="ตรวจสอบพื้นที่ว่างในดิสก์และสิทธิ์การเขียนไฟล์ที่โฟลเดอร์ปลายทาง ไฟล์นี้จะยังอยู่ในโฟลเดอร์ต้นทางและถูกลองประมวลผลใหม่โดยอัตโนมัติเมื่อกด \"เริ่มประมวลผล\" อีกครั้ง")
+                        self.emit_result(self._result(index, filename, None, "error", f"ย้ายไฟล์ไม่สำเร็จ: {e}"))
+                        continue
                     self.total_manual += 1
                     self.emit_result(self._result(index, filename, None, "manual", "AI อ่านไฟล์ไม่ได้", rel_path=f"Manual/{dest_name}"))
                     continue
@@ -575,7 +641,13 @@ class DocumentProcessor:
                 error = self.validate(data)
                 if error:
                     self._log("ตรวจสอบความถูกต้อง", f"ไฟล์ {filename} ข้อมูลไม่ผ่านเกณฑ์: {error}", "warning", hint=fix_hint(error))
-                    dest_name = self.move_to_manual(pdf_path, output_dir, error)
+                    try:
+                        dest_name = self.move_to_manual(pdf_path, output_dir, error)
+                    except Exception as e:
+                        self._log("จัดเก็บไฟล์", f"ไม่สามารถย้ายไฟล์ {filename} ไปที่โฟลเดอร์ Manual ได้: {e}", "error",
+                                  hint="ตรวจสอบพื้นที่ว่างในดิสก์และสิทธิ์การเขียนไฟล์ที่โฟลเดอร์ปลายทาง ไฟล์นี้จะยังอยู่ในโฟลเดอร์ต้นทางและถูกลองประมวลผลใหม่โดยอัตโนมัติเมื่อกด \"เริ่มประมวลผล\" อีกครั้ง")
+                        self.emit_result(self._result(index, filename, data, "error", f"ย้ายไฟล์ไม่สำเร็จ: {e}"))
+                        continue
                     self.total_manual += 1
                     self.emit_result(self._result(index, filename, data, "manual", error, rel_path=f"Manual/{dest_name}"))
                     continue
